@@ -2,20 +2,20 @@
 
 <div align="center">
   <a href="https://www.techinterviewhandbook.org/">
-    <img src="website/static/img/logo.svg" alt="Tech Interview Handbook" width="400" />
+    <img src="assets/logo.svg" alt="Tech Interview Handbook" width="400" />
   </a>
   <br />
   <h3>
     <a href="https://www.techinterviewhandbook.org/">Read on the website</a>
   </h3>
   <p>
-    Follow us on <a href="https://facebook.com/techinterviewhandbook">Facebook</a> | <a href="https://twitter.com/techinterviewhb">Twitter</a> | <a href="https://t.me/techinterviewhandbook">Telegram</a>
+    Join/follow us on <a href="https://discord.gg/usMqNaPczq" target="_blank">Discord</a> | <a href="https://twitter.com/techinterviewhb" target="_blank">Twitter</a> | <a href="https://t.me/techinterviewhandbook" target="_blank">Telegram</a> |  <a href="https://facebook.com/techinterviewhandbook" target="_blank">Facebook</a>
   </p>
 </div>
 
 ---
 
-<a href="https://www.techinterviewhandbook.org/software-engineering-interview-guide/">
+<a href="https://www.techinterviewhandbook.org/software-engineering-interview-guide/" target="_blank">
   <img src="assets/start-reading-button.jpg" alt="Start Reading Tech Interview Handbook" />
 </a>
 
@@ -26,7 +26,7 @@ Not everyone has the time to do a few hundred LeetCode questions. Here are _free
 Besides the usual algorithm questions, other **awesome** stuff includes:
 
 - [Best practice questions](https://www.techinterviewhandbook.org/coding-interview-study-plan/) for coding interviews
-- [Grind 75](https://www.techinterviewhandbook.org/grind75) the next evolution of Blind 75, bigger and better.
+- [Grind 75](https://www.techinterviewhandbook.org/grind75) - the next evolution of Blind 75, bigger and better
 - [How to prepare](https://www.techinterviewhandbook.org/coding-interview-prep/) for coding interviews
 - [Coding interview best practices](https://www.techinterviewhandbook.org/coding-interview-cheatsheet/) - Straight-to-the-point Do's and Don'ts
 - [Algorithm cheatsheets and tips](https://www.techinterviewhandbook.org/algorithms/study-cheatsheet/) categorized by topic
@@ -49,7 +49,7 @@ Anybody who wants to land a job at a tech company but is new to technical interv
 ---
 
 <div align="center">
-  <h3>💡 Stop grinding LeetCode aimlessly! Study coding question patterns efficiently with 
+  <h3>💡 Stop grinding mindlessly! Study coding question patterns efficiently with
     <a href="https://designgurus.org/link/kJSIoU?url=https%3A%2F%2Fdesigngurus.org%2Fcourse%3Fcourseid%3Dgrokking-the-coding-interview">Grokking the Coding Interview</a> by Design Gurus 💡
   </h3>
 </div>
