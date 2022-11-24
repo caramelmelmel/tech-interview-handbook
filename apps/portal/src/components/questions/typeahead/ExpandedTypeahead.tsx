@@ -8,13 +8,17 @@ import type { RequireAllOrNone } from '~/utils/questions/RequireAllOrNone';
 type TypeaheadProps = ComponentProps<typeof Typeahead>;
 type TypeaheadOption = TypeaheadProps['options'][number];
 
-export type ExpandedTypeaheadProps = Omit<TypeaheadProps, 'onSelect'> &
+export type ExpandedTypeaheadProps = Omit<
+  TypeaheadProps,
+  'nullable' | 'onSelect'
+> &
   RequireAllOrNone<{
-    clearOnSelect?: boolean;
-    filterOption: (option: TypeaheadOption) => boolean;
     onSuggestionClick: (option: TypeaheadOption) => void;
     suggestedCount: number;
+    suggestedOptions: Array<TypeaheadOption>;
   }> & {
+    clearOnSelect?: boolean;
+    filterOption?: (option: TypeaheadOption) => boolean;
     onChange?: unknown; // Workaround: This prop is here just to absorb the onChange returned react-hook-form
     onSelect: (option: TypeaheadOption) => void;
   };
@@ -22,6 +26,7 @@ export type ExpandedTypeaheadProps = Omit<TypeaheadProps, 'onSelect'> &
 export default function ExpandedTypeahead({
   suggestedCount = 0,
   onSuggestionClick,
+  suggestedOptions = [],
   filterOption = () => true,
   clearOnSelect = false,
   options,
@@ -34,21 +39,23 @@ export default function ExpandedTypeahead({
     return options.filter(filterOption);
   }, [options, filterOption]);
   const suggestions = useMemo(
-    () => filteredOptions.slice(0, suggestedCount),
-    [filteredOptions, suggestedCount],
+    () => suggestedOptions.slice(0, suggestedCount),
+    [suggestedOptions, suggestedCount],
   );
 
   return (
-    <div className="flex flex-wrap gap-x-2">
+    <div className="flex flex-wrap items-center gap-2">
       {suggestions.map((suggestion) => (
-        <Button
-          key={suggestion.id}
-          label={suggestion.label}
-          variant="tertiary"
-          onClick={() => {
-            onSuggestionClick?.(suggestion);
-          }}
-        />
+        <div key={suggestion.id} className="hidden lg:block">
+          <Button
+            label={suggestion.label}
+            size="sm"
+            variant="tertiary"
+            onClick={() => {
+              onSuggestionClick?.(suggestion);
+            }}
+          />
+        </div>
       ))}
       <div className="flex-1">
         <Typeahead
@@ -59,8 +66,7 @@ export default function ExpandedTypeahead({
             if (clearOnSelect) {
               setKey((key + 1) % 2);
             }
-            // TODO: Remove onSelect null coercion once onSelect prop is refactored
-            onSelect(option!);
+            onSelect(option);
           }}
         />
       </div>

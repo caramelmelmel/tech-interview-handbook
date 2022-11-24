@@ -4,6 +4,7 @@ import { companiesRouter } from './companies-router';
 import { createRouter } from './context';
 import { locationsRouter } from './locations-router';
 import { offersRouter } from './offers/offers';
+import { offerAdminRouter } from './offers/offers-admin-router';
 import { offersAnalysisRouter } from './offers/offers-analysis-router';
 import { offersCommentsRouter } from './offers/offers-comments-router';
 import { offersProfileRouter } from './offers/offers-profile-router';
@@ -29,6 +30,7 @@ import { resumesResumeUserRouter } from './resumes/resumes-resume-user-router';
 import { resumesStarUserRouter } from './resumes/resumes-star-user-router';
 import { todosRouter } from './todos';
 import { todosUserRouter } from './todos-user-router';
+import { userRouter } from './user-router';
 
 export const appRouter = createRouter()
   .transformer(superjson)
@@ -36,6 +38,7 @@ export const appRouter = createRouter()
   // All keys should be delimited by a period and end with a period.
   // Example routers. Learn more about tRPC routers: https://trpc.io/docs/v9/router
   .merge('auth.', protectedExampleRouter)
+  .merge('user.', userRouter)
   .merge('todos.', todosRouter)
   .merge('todos.user.', todosUserRouter)
   .merge('companies.', companiesRouter)
@@ -68,7 +71,8 @@ export const appRouter = createRouter()
   .merge('offers.profile.', offersProfileRouter)
   .merge('offers.analysis.', offersAnalysisRouter)
   .merge('offers.comments.', offersCommentsRouter)
-  .merge('offers.user.profile.', offersUserProfileRouter);
+  .merge('offers.user.profile.', offersUserProfileRouter)
+  .merge('offers.admin.', offerAdminRouter);
 
 // Export type definition of API
 export type AppRouter = typeof appRouter;

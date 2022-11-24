@@ -6,14 +6,18 @@ import type { ReactNode } from 'react';
 import { Fragment, useState } from 'react';
 import { Menu, Transition } from '@headlessui/react';
 import { Bars3BottomLeftIcon } from '@heroicons/react/24/outline';
+import { Button } from '@tih/ui';
 
 import GlobalNavigation from '~/components/global/GlobalNavigation';
 import HomeNavigation from '~/components/global/HomeNavigation';
 import OffersNavigation, {
+  OffersNavigationAdmin,
   OffersNavigationAuthenticated,
 } from '~/components/offers/OffersNavigation';
 import QuestionsNavigation from '~/components/questions/QuestionsNavigation';
 import ResumesNavigation from '~/components/resumes/ResumesNavigation';
+
+import { trpc } from '~/utils/trpc';
 
 import GoogleAnalytics from './GoogleAnalytics';
 import MobileNavigation from './MobileNavigation';
@@ -37,17 +41,33 @@ function ProfileJewel() {
   const loginHref = loginPageHref();
   if (session == null) {
     return router.pathname !== loginHref.pathname ? (
-      <Link className="text-base" href={loginHref}>
-        Log In
-      </Link>
+      <div className="flex items-center space-x-4">
+        <Link
+          className="hover:text-primary-500 text-xs font-medium text-slate-700"
+          href={loginHref}>
+          Sign In
+        </Link>
+        <Button
+          href={{
+            ...loginHref,
+            query: {
+              ...loginHref.query,
+              mode: 'signup',
+            },
+          }}
+          label="Sign Up"
+          size="sm"
+          variant="tertiary"
+        />
+      </div>
     ) : null;
   }
 
   const userNavigation = [
-    { href: '/profile', name: 'Profile' },
+    { href: '/settings', name: 'Settings' },
     {
       href: '/api/auth/signout',
-      name: 'Log out',
+      name: 'Sign Out',
       onClick: (event: MouseEvent) => {
         event.preventDefault();
         signOut();
@@ -61,7 +81,7 @@ function ProfileJewel() {
         <Menu.Button className="focus:ring-primary-500 flex rounded-full bg-white text-sm focus:outline-none focus:ring-2 focus:ring-offset-2">
           <span className="sr-only">Open user menu</span>
           {session?.user?.image == null ? (
-            <span>Render some icon</span>
+            <span>TODO: Render some icon</span>
           ) : (
             <img
               alt={session?.user?.email ?? session?.user?.name ?? ''}
@@ -80,6 +100,15 @@ function ProfileJewel() {
         leaveFrom="transform opacity-100 scale-100"
         leaveTo="transform opacity-0 scale-95">
         <Menu.Items className="absolute right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+          {!!session?.user?.name && (
+            <Menu.Item>
+              {() => (
+                <span className="block px-4 py-2 text-sm font-semibold text-slate-700">
+                  {session?.user?.name ?? ''}
+                </span>
+              )}
+            </Menu.Item>
+          )}
           {userNavigation.map((item) => (
             <Menu.Item key={item.name}>
               {({ active }) => (
@@ -105,7 +134,8 @@ export default function AppShell({ children }: Props) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const router = useRouter();
   const { data: session } = useSession();
-
+  const { isLoading: isOffersAdminResultsLoading, data: isOffersAdmin } =
+    trpc.useQuery(['offers.admin.isAdmin']);
   const currentProductNavigation: Readonly<{
     googleAnalyticsMeasurementID: string;
     logo?: React.ReactNode;
@@ -123,6 +153,9 @@ export default function AppShell({ children }: Props) {
       if (session == null) {
         return OffersNavigation;
       }
+      if (!isOffersAdminResultsLoading && isOffersAdmin) {
+        return OffersNavigationAdmin;
+      }
       return OffersNavigationAuthenticated;
     }
 
@@ -136,7 +169,7 @@ export default function AppShell({ children }: Props) {
   return (
     <GoogleAnalytics
       measurementID={currentProductNavigation.googleAnalyticsMeasurementID}>
-      <div className="flex h-full min-h-screen">
+      <div className="flex">
         {/* Narrow sidebar */}
         {currentProductNavigation.showGlobalNav && (
           <div className="hidden w-28 overflow-y-auto border-r border-slate-200 bg-white md:block">
@@ -183,9 +216,10 @@ export default function AppShell({ children }: Props) {
           setIsShown={setMobileMenuOpen}
         />
         {/* Content area */}
-        <div className="flex h-screen flex-1 flex-col overflow-hidden">
-          <header className="w-full">
-            <div className="relative z-10 flex h-16 flex-shrink-0 border-b border-slate-200 bg-white shadow-sm">
+        <div className="w-full">
+          {/* Navigation Bar */}
+          <header className="sticky top-0 z-10 w-full">
+            <div className="relative flex h-16 flex-shrink-0 border-b border-slate-200 bg-white shadow-sm">
               <button
                 className="focus:ring-primary-500 border-r border-slate-200 px-4 text-slate-500 focus:outline-none focus:ring-2 focus:ring-inset md:hidden"
                 type="button"
@@ -193,7 +227,7 @@ export default function AppShell({ children }: Props) {
                 <span className="sr-only">Open sidebar</span>
                 <Bars3BottomLeftIcon aria-hidden="true" className="h-6 w-6" />
               </button>
-              <div className="flex flex-1 justify-between px-4 sm:px-6">
+              <div className="flex flex-1 justify-between px-4 sm:px-6 lg:px-8">
                 <div className="flex flex-1 items-center">
                   <ProductNavigation
                     items={currentProductNavigation.navigation}
@@ -208,11 +242,8 @@ export default function AppShell({ children }: Props) {
               </div>
             </div>
           </header>
-
-          {/* Main content */}
-          <div className="flex flex-1 items-stretch overflow-hidden">
-            {children}
-          </div>
+          {/* Main Content */}
+          <div className="w-full">{children}</div>
         </div>
       </div>
     </GoogleAnalytics>

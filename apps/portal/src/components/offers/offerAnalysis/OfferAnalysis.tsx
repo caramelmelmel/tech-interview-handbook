@@ -1,10 +1,13 @@
 import { useEffect } from 'react';
 import { useState } from 'react';
-import { HorizontalDivider, Spinner, Tabs } from '@tih/ui';
+import { ArrowUpRightIcon } from '@heroicons/react/24/outline';
+import { JobType } from '@prisma/client';
+import { Alert, Button, HorizontalDivider, Spinner, Tabs } from '@tih/ui';
 
 import OfferPercentileAnalysisText from './OfferPercentileAnalysisText';
 import OfferProfileCard from './OfferProfileCard';
 import { OVERALL_TAB } from '../constants';
+import { YOE_CATEGORY } from '../table/types';
 
 import type { AnalysisUnit, ProfileAnalysis } from '~/types/offers';
 
@@ -19,20 +22,33 @@ function OfferAnalysisContent({
   tab,
   isSubmission,
 }: OfferAnalysisContentProps) {
+  const { companyId, companyName, title, totalYoe, jobType } = analysis;
+  const yoeCategory =
+    jobType === JobType.INTERN
+      ? ''
+      : totalYoe <= 2
+      ? YOE_CATEGORY.ENTRY
+      : totalYoe <= 5
+      ? YOE_CATEGORY.MID
+      : YOE_CATEGORY.SENIOR;
+
   if (!analysis || analysis.noOfOffers === 0) {
     if (tab === OVERALL_TAB) {
       return (
-        <p className="m-10">
-          You are the first to submit an offer for your job title and YOE! Check
-          back later when there are more submissions.
-        </p>
+        <Alert title="Insufficient data to compare with" variant="info">
+          You are among the first to submit an offer for your job title and
+          years of experience in your location! Check back later when there are
+          more submissions.
+        </Alert>
       );
     }
+
     return (
-      <p className="m-10">
-        You are the first to submit an offer for this company, job title and
-        YOE! Check back later when there are more submissions.
-      </p>
+      <Alert title="Insufficient data to compare with" variant="info">
+        You are among the first to submit an offer for this company, job title
+        and years of experience in your location! Check back later when there
+        are more submissions.
+      </Alert>
     );
   }
   return (
@@ -43,9 +59,9 @@ function OfferAnalysisContent({
         tab={tab}
       />
       <p className="mt-5">
-        {isSubmission
-          ? 'Here are some of the top offers relevant to you:'
-          : 'Relevant top offers:'}
+        {tab === OVERALL_TAB
+          ? 'Here are some of the highest offers with the same job title and YOE(±1):'
+          : 'Here are some of the highest offers with the same company, job title and YOE(±1):'}
       </p>
       {analysis.topPercentileOffers.map((topPercentileOffer) => (
         <OfferProfileCard
@@ -53,15 +69,22 @@ function OfferAnalysisContent({
           offerProfile={topPercentileOffer}
         />
       ))}
-      {/* {offerAnalysis.topPercentileOffers.length > 0 && (
+      {analysis.topPercentileOffers.length > 0 && (
         <div className="mb-4 flex justify-end">
           <Button
-            icon={EllipsisHorizontalIcon}
+            href={
+              tab === OVERALL_TAB
+                ? `/offers?jobTitleId=${title}&sortDirection=-&sortType=totalCompensation&yoeCategory=${yoeCategory}`
+                : `/offers?companyId=${companyId}&companyName=${companyName}&jobTitleId=${title}&sortDirection=-&sortType=totalCompensation&yoeCategory=${yoeCategory}`
+            }
+            icon={ArrowUpRightIcon}
             label="View more offers"
+            rel="noreferrer"
+            target="_blank"
             variant="tertiary"
           />
         </div>
-      )} */}
+      )}
     </>
   );
 }
@@ -107,13 +130,13 @@ export default function OfferAnalysis({
 
   return (
     <div>
-      {isError && (
+      {isError ? (
         <p className="m-10 text-center">
           An error occurred while generating profile analysis.
         </p>
-      )}
-      {isLoading && <Spinner className="m-10" display="block" size="lg" />}
-      {!isError && !isLoading && (
+      ) : isLoading ? (
+        <Spinner className="m-10" display="block" size="lg" />
+      ) : (
         <div>
           <Tabs
             label="Result Navigation"

@@ -1,6 +1,12 @@
 import clsx from 'clsx';
 import { useMemo, useState } from 'react';
 import {
+  BuildingOfficeIcon,
+  CalendarIcon,
+  MapPinIcon,
+  UserCircleIcon,
+} from '@heroicons/react/20/solid';
+import {
   ChatBubbleBottomCenterTextIcon,
   CheckIcon,
   EyeIcon,
@@ -10,7 +16,7 @@ import type { QuestionsQuestionType } from '@prisma/client';
 import { Button } from '@tih/ui';
 
 import { useProtectedCallback } from '~/utils/questions/useProtectedCallback';
-import { useQuestionVote } from '~/utils/questions/useVote';
+import { useQuestionVote } from '~/utils/questions/vote/useQuestionVote';
 
 import AddToListDropdown from '../../AddToListDropdown';
 import type { CreateQuestionEncounterData } from '../../forms/CreateQuestionEncounterForm';
@@ -90,7 +96,7 @@ type ReceivedStatisticsProps =
 type CreateEncounterProps =
   | {
       createEncounterButtonText: string;
-      onReceivedSubmit: (data: CreateQuestionEncounterData) => void;
+      onReceivedSubmit: (data: CreateQuestionEncounterData) => Promise<void>;
       showCreateEncounterButton: true;
     }
   | {
@@ -116,9 +122,10 @@ export type BaseQuestionCardProps = ActionButtonProps &
   ReceivedStatisticsProps &
   UpvoteProps & {
     content: string;
+    hideCard?: boolean;
     questionId: string;
     showHover?: boolean;
-    timestamp: string | null;
+    timestamp: Date | null;
     truncateContent?: boolean;
     type: QuestionsQuestionType;
   };
@@ -140,6 +147,7 @@ export default function BaseQuestionCard({
   actionButtonLabel,
   onActionButtonClick,
   upvoteCount,
+  hideCard,
   timestamp,
   roles,
   countries,
@@ -152,7 +160,6 @@ export default function BaseQuestionCard({
 }: BaseQuestionCardProps) {
   const [showReceivedForm, setShowReceivedForm] = useState(false);
   const { handleDownvote, handleUpvote, vote } = useQuestionVote(questionId);
-  const hoverClass = showHover ? 'hover:bg-slate-50' : '';
 
   const locations = useMemo(() => {
     if (countries === undefined) {
@@ -176,31 +183,58 @@ export default function BaseQuestionCard({
   const cardContent = (
     <>
       {showVoteButtons && (
-        <VotingButtons
-          upvoteCount={upvoteCount}
-          vote={vote}
-          onDownvote={handleDownvote}
-          onUpvote={handleUpvote}
-        />
+        <>
+          <div className="md:hidden">
+            <VotingButtons
+              size="sm"
+              upvoteCount={upvoteCount}
+              vote={vote}
+              onDownvote={handleDownvote}
+              onUpvote={handleUpvote}
+            />
+          </div>
+          <div className="hidden md:block">
+            <VotingButtons
+              size="md"
+              upvoteCount={upvoteCount}
+              vote={vote}
+              onDownvote={handleDownvote}
+              onUpvote={handleUpvote}
+            />
+          </div>
+        </>
       )}
-      <div className="flex flex-1 flex-col items-start gap-2">
-        <div className="flex items-baseline justify-between self-stretch">
-          <div className="flex items-center gap-2 text-slate-500">
+      <div className="flex flex-1 flex-col items-start gap-4">
+        <div className="flex items-center justify-between self-stretch">
+          <div className="flex flex-wrap items-center gap-3 text-slate-500">
             {showAggregateStatistics && (
               <>
                 <QuestionTypeBadge type={type} />
                 <QuestionAggregateBadge
+                  icon={BuildingOfficeIcon}
                   statistics={companies}
-                  variant="primary"
                 />
                 <QuestionAggregateBadge
+                  icon={MapPinIcon}
                   statistics={locations!}
-                  variant="success"
                 />
-                <QuestionAggregateBadge statistics={roles} variant="danger" />
+                <QuestionAggregateBadge
+                  icon={UserCircleIcon}
+                  statistics={roles}
+                />
               </>
             )}
-            {timestamp !== null && <p className="text-xs">{timestamp}</p>}
+            {timestamp !== null && (
+              <div className="flex items-center text-slate-500">
+                <CalendarIcon className="mr-1.5 h-5 w-5 flex-shrink-0 text-slate-400" />
+                <p className="text-xs font-medium">
+                  {timestamp.toLocaleDateString(undefined, {
+                    month: 'short',
+                    year: 'numeric',
+                  })}
+                </p>
+              </div>
+            )}
             {showAddToList && (
               <div className="pl-4">
                 <AddToListDropdown questionId={questionId} />
@@ -218,33 +252,43 @@ export default function BaseQuestionCard({
         </div>
         <p
           className={clsx(
-            'whitespace-pre-line font-semibold',
+            'md:text-md whitespace-pre-line text-base font-medium leading-6 text-slate-900',
             truncateContent && 'line-clamp-2 text-ellipsis',
           )}>
           {content}
         </p>
+
         {!showReceivedForm &&
           (showAnswerStatistics ||
             showReceivedStatistics ||
             showCreateEncounterButton) && (
-            <div className="flex gap-2">
+            <div className="flex w-full gap-4">
               {showAnswerStatistics && (
-                <Button
-                  addonPosition="start"
-                  icon={ChatBubbleBottomCenterTextIcon}
-                  label={`${answerCount} answers`}
-                  size="sm"
-                  variant="tertiary"
-                />
+                <div>
+                  <button
+                    className="-my-1 flex items-center rounded-md px-2
+                  py-1 text-xs font-medium
+                  text-slate-500 hover:bg-slate-100 hover:text-slate-600"
+                    type="button">
+                    <ChatBubbleBottomCenterTextIcon
+                      aria-hidden={true}
+                      className="mr-2 h-5 w-5"
+                    />
+                    {answerCount} {answerCount === 1 ? 'answer' : 'answers'}
+                  </button>
+                </div>
               )}
               {showReceivedStatistics && (
-                <Button
-                  addonPosition="start"
-                  icon={EyeIcon}
-                  label={`${receivedCount} received this`}
-                  size="sm"
-                  variant="tertiary"
-                />
+                <div>
+                  <button
+                    className="-my-1 flex items-center rounded-md px-2
+                  py-1 text-xs font-medium
+                  text-slate-500 hover:bg-slate-100 hover:text-slate-600"
+                    type="button">
+                    <EyeIcon aria-hidden={true} className="mr-2 h-5 w-5" />
+                    {receivedCount} received this
+                  </button>
+                </div>
               )}
               {showCreateEncounterButton && (
                 <Button
@@ -263,9 +307,8 @@ export default function BaseQuestionCard({
             onCancel={() => {
               setShowReceivedForm(false);
             }}
-            onSubmit={(data) => {
-              onReceivedSubmit?.(data);
-              setShowReceivedForm(false);
+            onSubmit={async (data) => {
+              await onReceivedSubmit?.(data);
             }}
           />
         )}
@@ -275,7 +318,11 @@ export default function BaseQuestionCard({
 
   return (
     <article
-      className={`group flex gap-4 rounded-md border border-slate-300 bg-white p-4 ${hoverClass}`}>
+      className={clsx(
+        'group flex gap-4 border-slate-200',
+        showHover && 'hover:border-primary-500 transition',
+        !hideCard && 'rounded-md border bg-white px-2 py-4 sm:rounded-lg',
+      )}>
       {cardContent}
       {showDeleteButton && (
         <div className="fill-danger-700 invisible	self-center group-hover:visible">

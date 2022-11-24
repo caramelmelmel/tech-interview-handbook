@@ -26,18 +26,22 @@ export default function ExpandableCommentCard({
         replyLength={comment.replies?.length ?? 0}
         token={token}
       />
-      {comment.replies && (
-        <div className="pl-8">
-          {isExpanded &&
-            comment.replies.map((reply) => (
-              <CommentCard
-                key={reply.id}
-                comment={reply}
-                disableReply={true}
-                profileId={profileId}
-                token={token}
-              />
-            ))}
+      {comment.replies && comment.replies.length > 0 && isExpanded && (
+        <div className="pl-[52px] pt-2">
+          <div className="border-l-2 border-slate-200 pl-2">
+            <ul className="space-y-2" role="list">
+              {comment.replies.map((reply) => (
+                <li key={reply.id}>
+                  <CommentCard
+                    comment={reply}
+                    disableReply={true}
+                    profileId={profileId}
+                    token={token}
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
     </div>

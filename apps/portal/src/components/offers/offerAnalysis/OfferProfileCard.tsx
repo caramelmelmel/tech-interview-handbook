@@ -1,18 +1,25 @@
 import {
+  ArrowTrendingUpIcon,
+  BuildingOfficeIcon,
+  MapPinIcon,
+} from '@heroicons/react/20/solid';
+import {
+  ArrowTopRightOnSquareIcon,
   BuildingOffice2Icon,
   CalendarDaysIcon,
 } from '@heroicons/react/24/outline';
 import { JobType } from '@prisma/client';
 
+import CompanyProfileImage from '~/components/shared/CompanyProfileImage';
 import type { JobTitleType } from '~/components/shared/JobTitles';
 import { getLabelForJobTitleType } from '~/components/shared/JobTitles';
 
-import { HorizontalDivider } from '~/../../../packages/ui/dist';
+import { Button } from '~/../../../packages/ui/dist';
 import { convertMoneyToString } from '~/utils/offers/currency';
 import { formatDate } from '~/utils/offers/time';
 
+import { JobTypeLabel } from '../constants';
 import ProfilePhotoHolder from '../profile/ProfilePhotoHolder';
-import { JobTypeLabel } from '../types';
 
 import type { AnalysisOffer } from '~/types/offers';
 
@@ -32,57 +39,117 @@ export default function OfferProfileCard({
     location,
     title,
     previousCompanies,
+    profileId,
   },
 }: OfferProfileCardProps) {
-  return (
-    // <a
-    //   className="my-5 block rounded-lg bg-white p-4 px-8  shadow-md"
-    //   href={`/offers/profile/${id}`}
-    //   rel="noreferrer"
-    //   target="_blank">
-    <div className="my-5 block rounded-lg bg-white p-4 px-8  shadow-lg">
-      <div className="flex items-center gap-x-5">
-        <div>
-          <ProfilePhotoHolder size="sm" />
-        </div>
-        <div className="col-span-10">
-          <p className="font-bold">{profileName}</p>
-          {previousCompanies.length > 0 && (
-            <div className="flex flex-row">
-              <BuildingOffice2Icon className="mr-2 h-5" />
-              <span className="mr-2 font-bold">Current:</span>
-              <span>{previousCompanies[0]}</span>
+  function UpperSection() {
+    return (
+      <div className="border-b px-4 py-5 sm:px-6">
+        <div className="-ml-4 -mt-4 flex flex-wrap items-center justify-between sm:flex-nowrap">
+          <div className="ml-4 mt-4">
+            <div className="flex items-center">
+              <div className="flex-shrink-0">
+                <ProfilePhotoHolder size="sm" />
+              </div>
+              <div className="ml-4">
+                <h2 className="text-lg font-medium leading-6 text-slate-900">
+                  {profileName}
+                </h2>
+                <p className="flex text-sm text-slate-500">
+                  <CalendarDaysIcon className="mr-2 h-5" />
+                  <span className="mr-2 font-bold">YOE:</span>
+                  <span>{totalYoe}</span>
+                  {previousCompanies.length > 0 && (
+                    <>
+                      <BuildingOffice2Icon className="ml-4 mr-2 h-5" />
+                      <span className="mr-2 font-bold">Previous:</span>
+                      <span>{previousCompanies[0]}</span>
+                    </>
+                  )}
+                </p>
+              </div>
             </div>
-          )}
-          <div className="flex flex-row">
-            <CalendarDaysIcon className="mr-2 h-5" />
-            <span className="mr-2 font-bold">YOE:</span>
-            <span>{totalYoe}</span>
+          </div>
+          <div className="ml-4 mt-4 flex flex-shrink-0">
+            <Button
+              href={`/offers/profile/${profileId}`}
+              icon={ArrowTopRightOnSquareIcon}
+              isLabelHidden={true}
+              label="View Profile"
+              rel="noreferrer"
+              size="md"
+              target="_blank"
+              variant="tertiary"
+            />
           </div>
         </div>
       </div>
+    );
+  }
 
-      <HorizontalDivider />
-      <div className="flex items-end justify-between">
-        <div className="col-span-1 row-span-3">
-          <p className="font-bold">
-            {getLabelForJobTitleType(title as JobTitleType)}{' '}
-            {`(${JobTypeLabel[jobType]})`}
-          </p>
-          <p>
-            Company: {company.name}, {location}
-          </p>
-          {level && <p>Level: {level}</p>}
-        </div>
-        <div className="col-span-1 row-span-3">
-          <p className="text-end">{formatDate(monthYearReceived)}</p>
-          <p className="text-end text-xl">
-            {jobType === JobType.FULLTIME
-              ? `${convertMoneyToString(income)} / year`
-              : `${convertMoneyToString(income)} / month`}
-          </p>
+  function BottomSection() {
+    return (
+      <div className="px-4 py-4 sm:px-6">
+        <div className="flex justify-between gap-4">
+          <CompanyProfileImage
+            alt={company.name}
+            className="hidden h-10 w-10 object-contain sm:block"
+            src={company.logoUrl}
+          />
+          <div className="grow">
+            <h4 className="font-medium">
+              {getLabelForJobTitleType(title as JobTitleType)}{' '}
+              {jobType && <>({JobTypeLabel[jobType]})</>}
+            </h4>
+            <div className="mt-1 flex flex-col sm:mt-0 sm:flex-row sm:flex-wrap sm:space-x-4">
+              {company?.name && (
+                <div className="mt-2 flex items-center text-sm text-slate-500">
+                  <BuildingOfficeIcon
+                    aria-hidden="true"
+                    className="mr-1.5 h-5 w-5 flex-shrink-0 text-slate-400"
+                  />
+                  {company.name}
+                </div>
+              )}
+              {location && (
+                <div className="mt-2 flex items-center text-sm text-slate-500">
+                  <MapPinIcon
+                    aria-hidden="true"
+                    className="mr-1.5 h-5 w-5 flex-shrink-0 text-slate-400"
+                  />
+                  {location.cityName}
+                </div>
+              )}
+              {level && (
+                <div className="mt-2 flex items-center text-sm text-slate-500">
+                  <ArrowTrendingUpIcon
+                    aria-hidden="true"
+                    className="mr-1.5 h-5 w-5 flex-shrink-0 text-slate-400"
+                  />
+                  {level}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-col justify-center">
+            <p className="text-end text-lg font-medium leading-6 text-slate-900">
+              {jobType === JobType.FULLTIME
+                ? `${convertMoneyToString(income)} / year`
+                : `${convertMoneyToString(income)} / month`}
+            </p>
+            <p className="text-end text-sm text-slate-500">
+              {formatDate(monthYearReceived)}
+            </p>
+          </div>
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="my-5 block rounded-lg border border-slate-200 bg-white">
+      <UpperSection />
+      <BottomSection />
     </div>
   );
 }

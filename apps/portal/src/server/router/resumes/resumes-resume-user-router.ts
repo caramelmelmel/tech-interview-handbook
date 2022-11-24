@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
-import { EXPERIENCES, LOCATIONS, ROLES } from '~/utils/resumes/resumeFilters';
+import type { FilterCounts } from '~/utils/resumes/resumeFilters';
+import {
+  getWhereClauseFilters,
+  resumeGetFilterCounts,
+} from '~/utils/resumes/resumePrismaUtils';
 
 import { createProtectedRouter } from '../context';
 
@@ -8,12 +12,11 @@ import type { Resume } from '~/types/resume';
 
 export const resumesResumeUserRouter = createProtectedRouter()
   .mutation('upsert', {
-    // TODO: Use enums for experience, location, role
     input: z.object({
       additionalInfo: z.string().optional(),
       experience: z.string(),
       id: z.string().optional(),
-      location: z.string(),
+      locationId: z.string(),
       role: z.string(),
       title: z.string(),
       url: z.string(),
@@ -25,7 +28,7 @@ export const resumesResumeUserRouter = createProtectedRouter()
         create: {
           additionalInfo: input.additionalInfo,
           experience: input.experience,
-          location: input.location,
+          locationId: input.locationId,
           role: input.role,
           title: input.title,
           url: input.url,
@@ -34,7 +37,7 @@ export const resumesResumeUserRouter = createProtectedRouter()
         update: {
           additionalInfo: input.additionalInfo,
           experience: input.experience,
-          location: input.location,
+          locationId: input.locationId,
           role: input.role,
           title: input.title,
           url: input.url,
@@ -66,6 +69,7 @@ export const resumesResumeUserRouter = createProtectedRouter()
   .query('findUserStarred', {
     input: z.object({
       experienceFilters: z.string().array(),
+      isTop10: z.boolean(),
       isUnreviewed: z.boolean(),
       locationFilters: z.string().array(),
       roleFilters: z.string().array(),
@@ -81,23 +85,16 @@ export const resumesResumeUserRouter = createProtectedRouter()
         locationFilters,
         experienceFilters,
         searchValue,
+        isTop10,
         sortOrder,
         isUnreviewed,
         skip,
         take,
       } = input;
-      const totalRecords = await ctx.prisma.resumesStar.count({
-        where: {
-          resume: {
-            experience: { in: experienceFilters },
-            isResolved: isUnreviewed ? false : {},
-            location: { in: locationFilters },
-            role: { in: roleFilters },
-            title: { contains: searchValue, mode: 'insensitive' },
-          },
-          userId,
-        },
-      });
+
+      let totalRecords = 10;
+      let filterCounts = {} as FilterCounts;
+
       const resumeStarsData = await ctx.prisma.resumesStar.findMany({
         include: {
           resume: {
@@ -106,6 +103,11 @@ export const resumesResumeUserRouter = createProtectedRouter()
                 select: {
                   comments: true,
                   stars: true,
+                },
+              },
+              location: {
+                select: {
+                  name: true,
                 },
               },
               user: {
@@ -138,14 +140,16 @@ export const resumesResumeUserRouter = createProtectedRouter()
                   },
                 },
               },
-        skip,
+        skip: isTop10 ? 0 : skip,
         take,
         where: {
           resume: {
-            experience: { in: experienceFilters },
+            ...getWhereClauseFilters(
+              experienceFilters,
+              roleFilters,
+              locationFilters,
+            ),
             isResolved: isUnreviewed ? false : {},
-            location: { in: locationFilters },
-            role: { in: roleFilters },
             title: { contains: searchValue, mode: 'insensitive' },
           },
           userId,
@@ -160,7 +164,8 @@ export const resumesResumeUserRouter = createProtectedRouter()
           id: rs.resume.id,
           isResolved: rs.resume.isResolved,
           isStarredByUser: true,
-          location: rs.resume.location,
+          location: rs.resume.location.name,
+          locationId: rs.resume.locationId,
           numComments: rs.resume._count.comments,
           numStars: rs.resume._count.stars,
           role: rs.resume.role,
@@ -171,103 +176,90 @@ export const resumesResumeUserRouter = createProtectedRouter()
         return resume;
       });
 
-      const roleCounts = await ctx.prisma.resumesResume.groupBy({
-        _count: {
-          _all: true,
-        },
-        by: ['role'],
-        where: {
-          experience: { in: experienceFilters },
-          isResolved: isUnreviewed ? false : {},
-          location: { in: locationFilters },
-          stars: {
-            some: {
-              userId,
+      if (isTop10) {
+        filterCounts = resumeGetFilterCounts(mappedResumeData);
+      } else {
+        totalRecords = await ctx.prisma.resumesStar.count({
+          where: {
+            resume: {
+              ...getWhereClauseFilters(
+                experienceFilters,
+                roleFilters,
+                locationFilters,
+              ),
+              isResolved: isUnreviewed ? false : {},
+              title: { contains: searchValue, mode: 'insensitive' },
             },
+            userId,
           },
-          title: { contains: searchValue, mode: 'insensitive' },
-        },
-      });
-      const mappedRoleCounts = Object.fromEntries(
-        roleCounts.map((rc) => [rc.role, rc._count._all]),
-      );
-      const zeroRoleCounts = Object.fromEntries(
-        ROLES.filter((r) => !(r.value in mappedRoleCounts)).map((r) => [
-          r.value,
-          0,
-        ]),
-      );
-      const processedRoleCounts = {
-        ...mappedRoleCounts,
-        ...zeroRoleCounts,
-      };
+        });
 
-      const experienceCounts = await ctx.prisma.resumesResume.groupBy({
-        _count: {
-          _all: true,
-        },
-        by: ['experience'],
-        where: {
-          isResolved: isUnreviewed ? false : {},
-          location: { in: locationFilters },
-          role: { in: roleFilters },
-          stars: {
-            some: {
-              userId,
+        const roleCounts = await ctx.prisma.resumesResume.groupBy({
+          _count: {
+            _all: true,
+          },
+          by: ['role'],
+          where: {
+            ...getWhereClauseFilters(experienceFilters, [], locationFilters),
+            isResolved: isUnreviewed ? false : {},
+            stars: {
+              some: {
+                userId,
+              },
             },
+            title: { contains: searchValue, mode: 'insensitive' },
           },
-          title: { contains: searchValue, mode: 'insensitive' },
-        },
-      });
-      const mappedExperienceCounts = Object.fromEntries(
-        experienceCounts.map((ec) => [ec.experience, ec._count._all]),
-      );
-      const zeroExperienceCounts = Object.fromEntries(
-        EXPERIENCES.filter((e) => !(e.value in mappedExperienceCounts)).map(
-          (e) => [e.value, 0],
-        ),
-      );
-      const processedExperienceCounts = {
-        ...mappedExperienceCounts,
-        ...zeroExperienceCounts,
-      };
+        });
+        const mappedRoleCounts = Object.fromEntries(
+          roleCounts.map((rc) => [rc.role, rc._count._all]),
+        );
 
-      const locationCounts = await ctx.prisma.resumesResume.groupBy({
-        _count: {
-          _all: true,
-        },
-        by: ['location'],
-        where: {
-          experience: { in: experienceFilters },
-          isResolved: isUnreviewed ? false : {},
-          role: { in: roleFilters },
-          stars: {
-            some: {
-              userId,
+        const experienceCounts = await ctx.prisma.resumesResume.groupBy({
+          _count: {
+            _all: true,
+          },
+          by: ['experience'],
+          where: {
+            ...getWhereClauseFilters([], roleFilters, locationFilters),
+            isResolved: isUnreviewed ? false : {},
+            stars: {
+              some: {
+                userId,
+              },
             },
+            title: { contains: searchValue, mode: 'insensitive' },
           },
-          title: { contains: searchValue, mode: 'insensitive' },
-        },
-      });
-      const mappedLocationCounts = Object.fromEntries(
-        locationCounts.map((lc) => [lc.location, lc._count._all]),
-      );
-      const zeroLocationCounts = Object.fromEntries(
-        LOCATIONS.filter((l) => !(l.value in mappedLocationCounts)).map((l) => [
-          l.value,
-          0,
-        ]),
-      );
-      const processedLocationCounts = {
-        ...mappedLocationCounts,
-        ...zeroLocationCounts,
-      };
+        });
+        const mappedExperienceCounts = Object.fromEntries(
+          experienceCounts.map((ec) => [ec.experience, ec._count._all]),
+        );
 
-      const filterCounts = {
-        Experience: processedExperienceCounts,
-        Location: processedLocationCounts,
-        Role: processedRoleCounts,
-      };
+        const locationCounts = await ctx.prisma.resumesResume.groupBy({
+          _count: {
+            _all: true,
+          },
+          by: ['locationId'],
+          where: {
+            ...getWhereClauseFilters(experienceFilters, roleFilters, []),
+            isResolved: isUnreviewed ? false : {},
+            stars: {
+              some: {
+                userId,
+              },
+            },
+            title: { contains: searchValue, mode: 'insensitive' },
+          },
+        });
+        const mappedLocationCounts = Object.fromEntries(
+          locationCounts.map((lc) => [lc.locationId, lc._count._all]),
+        );
+
+        filterCounts = {
+          experience: mappedExperienceCounts,
+          location: mappedLocationCounts,
+          role: mappedRoleCounts,
+        };
+      }
 
       return { filterCounts, mappedResumeData, totalRecords };
     },
@@ -275,6 +267,7 @@ export const resumesResumeUserRouter = createProtectedRouter()
   .query('findUserCreated', {
     input: z.object({
       experienceFilters: z.string().array(),
+      isTop10: z.boolean(),
       isUnreviewed: z.boolean(),
       locationFilters: z.string().array(),
       roleFilters: z.string().array(),
@@ -291,26 +284,26 @@ export const resumesResumeUserRouter = createProtectedRouter()
         experienceFilters,
         sortOrder,
         searchValue,
+        isTop10,
         isUnreviewed,
         take,
         skip,
       } = input;
-      const totalRecords = await ctx.prisma.resumesResume.count({
-        where: {
-          experience: { in: experienceFilters },
-          isResolved: isUnreviewed ? false : {},
-          location: { in: locationFilters },
-          role: { in: roleFilters },
-          title: { contains: searchValue, mode: 'insensitive' },
-          userId,
-        },
-      });
+
+      let totalRecords = 10;
+      let filterCounts = {} as FilterCounts;
+
       const resumesData = await ctx.prisma.resumesResume.findMany({
         include: {
           _count: {
             select: {
               comments: true,
               stars: true,
+            },
+          },
+          location: {
+            select: {
+              name: true,
             },
           },
           stars: {
@@ -336,13 +329,15 @@ export const resumesResumeUserRouter = createProtectedRouter()
                 },
               }
             : { comments: { _count: 'desc' } },
-        skip,
+        skip: isTop10 ? 0 : skip,
         take,
         where: {
-          experience: { in: experienceFilters },
+          ...getWhereClauseFilters(
+            experienceFilters,
+            roleFilters,
+            locationFilters,
+          ),
           isResolved: isUnreviewed ? false : {},
-          location: { in: locationFilters },
-          role: { in: roleFilters },
           title: { contains: searchValue, mode: 'insensitive' },
           userId,
         },
@@ -355,7 +350,8 @@ export const resumesResumeUserRouter = createProtectedRouter()
           id: r.id,
           isResolved: r.isResolved,
           isStarredByUser: r.stars.length > 0,
-          location: r.location,
+          location: r.location.name,
+          locationId: r.locationId,
           numComments: r._count.comments,
           numStars: r._count.stars,
           role: r.role,
@@ -366,92 +362,91 @@ export const resumesResumeUserRouter = createProtectedRouter()
         return resume;
       });
 
-      const roleCounts = await ctx.prisma.resumesResume.groupBy({
-        _count: {
-          _all: true,
-        },
-        by: ['role'],
-        where: {
-          experience: { in: experienceFilters },
-          isResolved: isUnreviewed ? false : {},
-          location: { in: locationFilters },
-          title: { contains: searchValue, mode: 'insensitive' },
-          userId,
-        },
-      });
-      const mappedRoleCounts = Object.fromEntries(
-        roleCounts.map((rc) => [rc.role, rc._count._all]),
-      );
-      const zeroRoleCounts = Object.fromEntries(
-        ROLES.filter((r) => !(r.value in mappedRoleCounts)).map((r) => [
-          r.value,
-          0,
-        ]),
-      );
-      const processedRoleCounts = {
-        ...mappedRoleCounts,
-        ...zeroRoleCounts,
-      };
+      if (isTop10) {
+        filterCounts = resumeGetFilterCounts(mappedResumeData);
+      } else {
+        totalRecords = await ctx.prisma.resumesResume.count({
+          where: {
+            ...getWhereClauseFilters(
+              experienceFilters,
+              roleFilters,
+              locationFilters,
+            ),
+            isResolved: isUnreviewed ? false : {},
+            title: { contains: searchValue, mode: 'insensitive' },
+            userId,
+          },
+        });
 
-      const experienceCounts = await ctx.prisma.resumesResume.groupBy({
-        _count: {
-          _all: true,
-        },
-        by: ['experience'],
-        where: {
-          isResolved: isUnreviewed ? false : {},
-          location: { in: locationFilters },
-          role: { in: roleFilters },
-          title: { contains: searchValue, mode: 'insensitive' },
-          userId,
-        },
-      });
-      const mappedExperienceCounts = Object.fromEntries(
-        experienceCounts.map((ec) => [ec.experience, ec._count._all]),
-      );
-      const zeroExperienceCounts = Object.fromEntries(
-        EXPERIENCES.filter((e) => !(e.value in mappedExperienceCounts)).map(
-          (e) => [e.value, 0],
-        ),
-      );
-      const processedExperienceCounts = {
-        ...mappedExperienceCounts,
-        ...zeroExperienceCounts,
-      };
+        const roleCounts = await ctx.prisma.resumesResume.groupBy({
+          _count: {
+            _all: true,
+          },
+          by: ['role'],
+          where: {
+            ...getWhereClauseFilters(experienceFilters, [], locationFilters),
+            isResolved: isUnreviewed ? false : {},
+            title: { contains: searchValue, mode: 'insensitive' },
+            userId,
+          },
+        });
+        const mappedRoleCounts = Object.fromEntries(
+          roleCounts.map((rc) => [rc.role, rc._count._all]),
+        );
 
-      const locationCounts = await ctx.prisma.resumesResume.groupBy({
-        _count: {
-          _all: true,
-        },
-        by: ['location'],
-        where: {
-          experience: { in: experienceFilters },
-          isResolved: isUnreviewed ? false : {},
-          role: { in: roleFilters },
-          title: { contains: searchValue, mode: 'insensitive' },
-          userId,
-        },
-      });
-      const mappedLocationCounts = Object.fromEntries(
-        locationCounts.map((lc) => [lc.location, lc._count._all]),
-      );
-      const zeroLocationCounts = Object.fromEntries(
-        LOCATIONS.filter((l) => !(l.value in mappedLocationCounts)).map((l) => [
-          l.value,
-          0,
-        ]),
-      );
-      const processedLocationCounts = {
-        ...mappedLocationCounts,
-        ...zeroLocationCounts,
-      };
+        const experienceCounts = await ctx.prisma.resumesResume.groupBy({
+          _count: {
+            _all: true,
+          },
+          by: ['experience'],
+          where: {
+            ...getWhereClauseFilters([], roleFilters, locationFilters),
+            isResolved: isUnreviewed ? false : {},
+            title: { contains: searchValue, mode: 'insensitive' },
+            userId,
+          },
+        });
+        const mappedExperienceCounts = Object.fromEntries(
+          experienceCounts.map((ec) => [ec.experience, ec._count._all]),
+        );
 
-      const filterCounts = {
-        Experience: processedExperienceCounts,
-        Location: processedLocationCounts,
-        Role: processedRoleCounts,
-      };
+        const locationCounts = await ctx.prisma.resumesResume.groupBy({
+          _count: {
+            _all: true,
+          },
+          by: ['locationId'],
+          where: {
+            ...getWhereClauseFilters(experienceFilters, roleFilters, []),
+            isResolved: isUnreviewed ? false : {},
+            title: { contains: searchValue, mode: 'insensitive' },
+            userId,
+          },
+        });
+        const mappedLocationCounts = Object.fromEntries(
+          locationCounts.map((lc) => [lc.locationId, lc._count._all]),
+        );
+
+        filterCounts = {
+          experience: mappedExperienceCounts,
+          location: mappedLocationCounts,
+          role: mappedRoleCounts,
+        };
+      }
 
       return { filterCounts, mappedResumeData, totalRecords };
+    },
+  })
+  .mutation('delete', {
+    input: z.object({
+      id: z.string(),
+    }),
+    async resolve({ ctx, input }) {
+      const { id } = input;
+
+      return await ctx.prisma.resumesResume.delete({
+        where: {
+          id,
+        },
+      });
     },
   });

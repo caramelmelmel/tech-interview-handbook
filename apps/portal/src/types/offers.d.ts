@@ -25,7 +25,7 @@ export type Experience = {
   id: string;
   jobType: JobType?;
   level: string?;
-  location: string?;
+  location: Location?;
   monthlySalary: Valuation?;
   title: string?;
   totalCompensation: Valuation?;
@@ -65,11 +65,16 @@ export type SpecificYoe = {
 };
 
 export type DashboardOffer = {
+  baseSalary?: Valuation;
+  bonus?: Valuation;
   company: OffersCompany;
   id: string;
   income: Valuation;
+  location: Location;
   monthYearReceived: Date;
+  numberOfOtherOffers: number;
   profileId: string;
+  stocks?: Valuation;
   title: string;
   totalYoe: number;
 };
@@ -79,7 +84,7 @@ export type ProfileOffer = {
   company: OffersCompany;
   id: string;
   jobType: JobType;
-  location: string;
+  location: Location;
   monthYearReceived: Date;
   negotiationStrategy: string;
   offersFullTime: FullTime?;
@@ -123,6 +128,7 @@ export type User = {
 
 export type GetOffersResponse = {
   data: Array<DashboardOffer>;
+  jobType: JobType;
   paging: Paging;
 };
 
@@ -153,17 +159,22 @@ export type ProfileAnalysis = {
 };
 
 export type AnalysisUnit = {
+  companyId: string;
   companyName: string;
+  income: Valuation;
+  jobType: JobType;
   noOfOffers: number;
   percentile: number;
+  title: string;
   topPercentileOffers: Array<AnalysisOffer>;
+  totalYoe: number;
 };
 
 export type AnalysisHighestOffer = {
   company: OffersCompany;
   id: string;
   level: string;
-  location: string;
+  location: Location;
   totalYoe: number;
 };
 
@@ -173,10 +184,11 @@ export type AnalysisOffer = {
   income: Valuation;
   jobType: JobType;
   level: string;
-  location: string;
+  location: Location;
   monthYearReceived: Date;
   negotiationStrategy: string;
   previousCompanies: Array<string>;
+  profileId: string;
   profileName: string;
   title: string;
   totalYoe: number;
@@ -202,7 +214,39 @@ export type UserProfileOffer = {
   income: Valuation;
   jobType: JobType;
   level: string;
-  location: string;
+  location: Location;
   monthYearReceived: Date;
   title: string;
+};
+
+export type Location = {
+  cityId: string;
+  cityName: string;
+  countryCode: string;
+  countryId: string;
+  countryName: string;
+  stateId: string;
+  stateName: string;
+};
+
+export type GetAdminOffersResponse = {
+  data: Array<AdminDashboardOffer>;
+  jobType: JobType;
+  paging: Paging;
+};
+
+export type AdminDashboardOffer = {
+  baseSalary?: Valuation;
+  bonus?: Valuation;
+  company: OffersCompany;
+  id: string;
+  income: Valuation;
+  location: Location;
+  monthYearReceived: Date;
+  numberOfOtherOffers: number;
+  profileId: string;
+  stocks?: Valuation;
+  title: string;
+  token: string;
+  totalYoe: number;
 };

@@ -39,7 +39,7 @@ export const questionsQuestionRouter = createRouter()
             {
               id: input.sortOrder,
             },
-          ]
+          ];
           break;
         case SortType.NEW:
           sortCondition = [
@@ -61,7 +61,7 @@ export const questionsQuestionRouter = createRouter()
             },
           ];
           break;
-        }
+      }
 
       const questionsData = await ctx.prisma.questionsQuestion.findMany({
         cursor: cursor ? { id: cursor } : undefined,
@@ -235,9 +235,8 @@ export const questionsQuestionRouter = createRouter()
         .$queryRaw`
         SELECT id FROM "QuestionsQuestion"
         WHERE
-          to_tsvector("content") @@ to_tsquery('english', ${query})
-        ORDER BY ts_rank_cd(to_tsvector("content"), to_tsquery('english', ${query}), 4) DESC
-        LIMIT 3;
+          ts_rank_cd(to_tsvector("content"), to_tsquery(${query}), 32) > 0.1
+        ORDER BY ts_rank_cd(to_tsvector("content"), to_tsquery('english', ${query}), 4) DESC;
       `;
 
       const relatedQuestionsIdArray = relatedQuestionsId.map(
@@ -310,18 +309,14 @@ export const questionsQuestionRouter = createRouter()
 
       let relatedQuestionsId: Array<{ id: string }> = [];
 
-      if (input.content !== "") {
-        relatedQuestionsId = await ctx.prisma
-          .$queryRaw`
+      if (input.content !== '') {
+        relatedQuestionsId = await ctx.prisma.$queryRaw`
           SELECT id FROM "QuestionsQuestion"
           WHERE
-            to_tsvector("content") @@ to_tsquery('english', ${query})
-          ORDER BY ts_rank_cd(to_tsvector("content"), to_tsquery('english', ${query}), 4) DESC
-          LIMIT 3;
+            ts_rank_cd(to_tsvector("content"), to_tsquery(${query}), 32) > 0.1
+          ORDER BY ts_rank_cd(to_tsvector("content"), to_tsquery('english', ${query}), 4) DESC;
         `;
       }
-
-
 
       const relatedQuestionsIdArray = relatedQuestionsId.map(
         (current) => current.id,
@@ -329,24 +324,40 @@ export const questionsQuestionRouter = createRouter()
 
       const { cursor } = input;
 
-      const sortCondition =
-        input.sortType === SortType.TOP
-          ? [
-              {
-                upvotes: input.sortOrder,
-              },
-              {
-                id: input.sortOrder,
-              },
-            ]
-          : [
-              {
-                lastSeenAt: input.sortOrder,
-              },
-              {
-                id: input.sortOrder,
-              },
-            ];
+      let sortCondition = undefined;
+
+      switch (input.sortType) {
+        case SortType.TOP:
+          sortCondition = [
+            {
+              upvotes: input.sortOrder,
+            },
+            {
+              id: input.sortOrder,
+            },
+          ];
+          break;
+        case SortType.NEW:
+          sortCondition = [
+            {
+              lastSeenAt: input.sortOrder,
+            },
+            {
+              id: input.sortOrder,
+            },
+          ];
+          break;
+        case SortType.ENCOUNTERS:
+          sortCondition = [
+            {
+              numEncounters: input.sortOrder,
+            },
+            {
+              id: input.sortOrder,
+            },
+          ];
+          break;
+      }
 
       const questionsData = await ctx.prisma.questionsQuestion.findMany({
         cursor: cursor ? { id: cursor } : undefined,
@@ -377,9 +388,12 @@ export const questionsQuestionRouter = createRouter()
         orderBy: sortCondition,
         take: input.limit + 1,
         where: {
-          id: input.content !== "" ? {
-            in: relatedQuestionsIdArray,
-          } : undefined,
+          id:
+            input.content !== ''
+              ? {
+                  in: relatedQuestionsIdArray,
+                }
+              : undefined,
           ...(input.questionTypes.length > 0
             ? {
                 questionType: {

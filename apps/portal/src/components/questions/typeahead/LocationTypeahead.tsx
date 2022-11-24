@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import type { TypeaheadOption } from '@tih/ui';
 
-import { trpc } from '~/utils/trpc';
+import useLocationOptions from '~/utils/questions/useLocationOptions';
 
 import type { ExpandedTypeaheadProps } from './ExpandedTypeahead';
 import ExpandedTypeahead from './ExpandedTypeahead';
@@ -23,28 +23,11 @@ export default function LocationTypeahead({
 }: LocationTypeaheadProps) {
   const [query, setQuery] = useState('');
 
-  const { data: locations } = trpc.useQuery([
-    'locations.cities.list',
-    {
-      name: query,
-    },
-  ]);
-
-  const locationOptions = useMemo(() => {
-    return (
-      locations?.map(({ id, name, state }) => ({
-        cityId: id,
-        countryId: state.country.id,
-        id,
-        label: `${name}, ${state.name}, ${state.country.name}`,
-        stateId: state.id,
-        value: id,
-      })) ?? []
-    );
-  }, [locations]);
+  const { data: locationOptions, isLoading } = useLocationOptions(query);
 
   return (
     <ExpandedTypeahead
+      isLoading={isLoading}
       {...({
         onSuggestionClick: onSuggestionClick
           ? (option: TypeaheadOption) => {

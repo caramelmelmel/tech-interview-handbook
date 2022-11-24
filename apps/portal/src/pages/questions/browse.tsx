@@ -6,19 +6,24 @@ import { Bars3BottomLeftIcon } from '@heroicons/react/20/solid';
 import { NoSymbolIcon } from '@heroicons/react/24/outline';
 import type { QuestionsQuestionType } from '@prisma/client';
 import type { TypeaheadOption } from '@tih/ui';
+import { useToast } from '@tih/ui';
 import { Button, SlideOut } from '@tih/ui';
 
+import { useGoogleAnalytics } from '~/components/global/GoogleAnalytics';
 import QuestionOverviewCard from '~/components/questions/card/question/QuestionOverviewCard';
 import ContributeQuestionCard from '~/components/questions/ContributeQuestionCard';
 import FilterSection from '~/components/questions/filter/FilterSection';
 import PaginationLoadMoreButton from '~/components/questions/PaginationLoadMoreButton';
+import QuestionContainer from '~/components/questions/QuestionContainer';
 import QuestionSearchBar from '~/components/questions/QuestionSearchBar';
 import CompanyTypeahead from '~/components/questions/typeahead/CompanyTypeahead';
 import LocationTypeahead from '~/components/questions/typeahead/LocationTypeahead';
 import RoleTypeahead from '~/components/questions/typeahead/RoleTypeahead';
-import { JobTitleLabels } from '~/components/shared/JobTitles';
+import type { JobTitleType } from '~/components/shared/JobTitles';
+import { getLabelForJobTitleType } from '~/components/shared/JobTitles';
 
 import type { QuestionAge } from '~/utils/questions/constants';
+import { QUESTION_SORT_TYPES } from '~/utils/questions/constants';
 import { APP_TITLE } from '~/utils/questions/constants';
 import { QUESTION_AGES, QUESTION_TYPES } from '~/utils/questions/constants';
 import createSlug from '~/utils/questions/createSlug';
@@ -34,8 +39,33 @@ import type { Location } from '~/types/questions.d';
 import { SortType } from '~/types/questions.d';
 import { SortOrder } from '~/types/questions.d';
 
+function sortOrderToString(value: SortOrder): string | null {
+  switch (value) {
+    case SortOrder.ASC:
+      return 'ASC';
+    case SortOrder.DESC:
+      return 'DESC';
+    default:
+      return null;
+  }
+}
+
+function sortTypeToString(value: SortType): string | null {
+  switch (value) {
+    case SortType.TOP:
+      return 'TOP';
+    case SortType.NEW:
+      return 'NEW';
+    case SortType.ENCOUNTERS:
+      return 'ENCOUNTERS';
+    default:
+      return null;
+  }
+}
+
 export default function QuestionsBrowsePage() {
   const router = useRouter();
+  const { event } = useGoogleAnalytics();
 
   const [query, setQuery] = useState('');
 
@@ -88,15 +118,7 @@ export default function QuestionsBrowsePage() {
   const [sortOrder, setSortOrder, isSortOrderInitialized] =
     useSearchParamSingle<SortOrder>('sortOrder', {
       defaultValue: SortOrder.DESC,
-      paramToString: (value) => {
-        if (value === SortOrder.ASC) {
-          return 'ASC';
-        }
-        if (value === SortOrder.DESC) {
-          return 'DESC';
-        }
-        return null;
-      },
+      paramToString: sortOrderToString,
       stringToParam: (param) => {
         const uppercaseParam = param.toUpperCase();
         if (uppercaseParam === 'ASC') {
@@ -112,15 +134,7 @@ export default function QuestionsBrowsePage() {
   const [sortType, setSortType, isSortTypeInitialized] =
     useSearchParamSingle<SortType>('sortType', {
       defaultValue: SortType.TOP,
-      paramToString: (value) => {
-        if (value === SortType.NEW) {
-          return 'NEW';
-        }
-        if (value === SortType.TOP) {
-          return 'TOP';
-        }
-        return null;
-      },
+      paramToString: sortTypeToString,
       stringToParam: (param) => {
         const uppercaseParam = param.toUpperCase();
         if (uppercaseParam === 'NEW') {
@@ -129,17 +143,22 @@ export default function QuestionsBrowsePage() {
         if (uppercaseParam === 'TOP') {
           return SortType.TOP;
         }
+        if (uppercaseParam === 'ENCOUNTERS') {
+          return SortType.ENCOUNTERS;
+        }
         return null;
       },
     });
 
-  const hasFilters = useMemo(
+  const activeFilterCount = useMemo(
     () =>
-      selectedCompanySlugs.length > 0 ||
-      selectedQuestionTypes.length > 0 ||
-      selectedQuestionAge !== 'all' ||
-      selectedRoles.length > 0 ||
-      selectedLocations.length > 0,
+      [
+        ...selectedCompanySlugs,
+        ...selectedQuestionTypes,
+        ...(selectedQuestionAge !== 'all' ? [selectedQuestionAge] : []),
+        ...selectedRoles,
+        ...selectedLocations,
+      ].length,
     [
       selectedCompanySlugs,
       selectedQuestionTypes,
@@ -148,6 +167,8 @@ export default function QuestionsBrowsePage() {
       selectedLocations,
     ],
   );
+
+  const hasFilters = activeFilterCount > 0;
 
   const today = useMemo(() => new Date(), []);
   const startDate = useMemo(() => {
@@ -205,6 +226,15 @@ export default function QuestionsBrowsePage() {
     {
       onSuccess: () => {
         utils.invalidateQueries('questions.questions.getQuestionsByFilter');
+        event({
+          action: 'questions.create_question',
+          category: 'engagement',
+          label: 'create_question',
+        });
+        showToast({
+          title: `Thank you for submitting your question!`,
+          variant: 'success',
+        });
       },
     },
   );
@@ -260,8 +290,8 @@ export default function QuestionsBrowsePage() {
           questionAge: selectedQuestionAge,
           questionTypes: selectedQuestionTypes,
           roles: selectedRoles,
-          sortOrder: sortOrder === SortOrder.ASC ? 'ASC' : 'DESC',
-          sortType: sortType === SortType.TOP ? 'TOP' : 'NEW',
+          sortOrder: sortOrderToString(sortOrder),
+          sortType: sortTypeToString(sortType),
         },
       });
 
@@ -280,6 +310,8 @@ export default function QuestionsBrowsePage() {
     sortType,
   ]);
 
+  const { showToast } = useToast();
+
   const selectedCompanyOptions = useMemo(() => {
     return selectedCompanySlugs.map((company) => {
       const [id, label] = company.split('_');
@@ -296,7 +328,7 @@ export default function QuestionsBrowsePage() {
     return selectedRoles.map((role) => ({
       checked: true,
       id: role,
-      label: JobTitleLabels[role as keyof typeof JobTitleLabels],
+      label: getLabelForJobTitleType(role as JobTitleType),
       value: role,
     }));
   }, [selectedRoles]);
@@ -344,7 +376,6 @@ export default function QuestionsBrowsePage() {
             isLabelHidden={true}
             placeholder="Search companies"
             onSelect={(option) => {
-              // @ts-ignore TODO(questions): handle potentially null value.
               onOptionChange({
                 ...option,
                 checked: true,
@@ -385,7 +416,6 @@ export default function QuestionsBrowsePage() {
             isLabelHidden={true}
             placeholder="Search roles"
             onSelect={(option) => {
-              // @ts-ignore TODO(questions): handle potentially null value.
               onOptionChange({
                 ...option,
                 checked: true,
@@ -446,7 +476,6 @@ export default function QuestionsBrowsePage() {
             isLabelHidden={true}
             placeholder="Search locations"
             onSelect={(option) => {
-              // @ts-ignore TODO(questions): handle potentially null value.
               onOptionChange({
                 ...option,
                 checked: true,
@@ -476,10 +505,10 @@ export default function QuestionsBrowsePage() {
       <Head>
         <title>Home - {APP_TITLE}</title>
       </Head>
-      <main className="flex flex-1 flex-col items-stretch">
-        <div className="flex h-full flex-1">
+      <main>
+        <QuestionContainer className="relative flex" variant="sm">
           <section className="min-h-0 flex-1 overflow-auto">
-            <div className="my-4 mx-auto flex max-w-3xl flex-col items-stretch justify-start gap-6">
+            <div className="my-4 mx-auto flex flex-col items-stretch justify-start gap-6 sm:px-4">
               <ContributeQuestionCard
                 onSubmit={(data) => {
                   const { cityId, countryId, stateId } = data.location;
@@ -498,8 +527,10 @@ export default function QuestionsBrowsePage() {
               <div className="flex flex-col items-stretch gap-4">
                 <div className="sticky top-0 border-b border-slate-300 bg-slate-50 py-4">
                   <QuestionSearchBar
+                    activeFilterCount={activeFilterCount}
                     query={query}
                     sortOrderValue={sortOrder}
+                    sortTypeOptions={QUESTION_SORT_TYPES}
                     sortTypeValue={sortType}
                     onFilterOptionsToggle={() => {
                       setFilterDrawerOpen(!filterDrawerOpen);
@@ -511,7 +542,7 @@ export default function QuestionsBrowsePage() {
                     onSortTypeChange={setSortType}
                   />
                 </div>
-                <div className="flex flex-col gap-2 pb-4">
+                <div className="flex flex-col gap-4 pb-4">
                   {(questionsQueryData?.pages ?? []).flatMap(
                     ({ data: questions }) =>
                       questions.map((question) => {
@@ -533,13 +564,7 @@ export default function QuestionsBrowsePage() {
                             questionId={question.id}
                             receivedCount={question.receivedCount}
                             roles={roleCounts}
-                            timestamp={question.seenAt.toLocaleDateString(
-                              undefined,
-                              {
-                                month: 'short',
-                                year: 'numeric',
-                              },
-                            )}
+                            timestamp={question.lastSeenAt}
                             type={question.type}
                             upvoteCount={question.numVotes}
                           />
@@ -560,22 +585,22 @@ export default function QuestionsBrowsePage() {
               </div>
             </div>
           </section>
-          <aside className="hidden w-[300px] overflow-y-auto border-l bg-white py-4 lg:block">
+          <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-[300px] overflow-y-auto border-x bg-white py-4 lg:block">
             <h2 className="px-4 text-xl font-semibold">Filter by</h2>
             {filterSidebar}
           </aside>
-          <SlideOut
-            className="lg:hidden"
-            enterFrom="end"
-            isShown={filterDrawerOpen}
-            size="sm"
-            title="Filter by"
-            onClose={() => {
-              setFilterDrawerOpen(false);
-            }}>
-            {filterSidebar}
-          </SlideOut>
-        </div>
+        </QuestionContainer>
+        <SlideOut
+          className="lg:hidden"
+          enterFrom="end"
+          isShown={filterDrawerOpen}
+          size="sm"
+          title="Filter by"
+          onClose={() => {
+            setFilterDrawerOpen(false);
+          }}>
+          {filterSidebar}
+        </SlideOut>
       </main>
     </>
   );

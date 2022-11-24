@@ -3,19 +3,23 @@ import type { ProductNavigationItems } from '~/components/global/ProductNavigati
 const navigation: ProductNavigationItems = [
   { href: '/questions/browse', name: 'Browse' },
   { href: '/questions/lists', name: 'My Lists' },
+  { href: '/questions/about', name: 'About' },
   // { href: '/questions/my-questions', name: 'My Questions' },
   // { href: '/questions/history', name: 'History' },
 ];
 
 const config = {
-  // TODO: Change this to your own GA4 measurement ID.
-  googleAnalyticsMeasurementID: 'G-DBLZDQ2ZZN',
+  googleAnalyticsMeasurementID: 'G-0T4LYWMK8L',
   logo: (
-    <img alt="Questions Bank" className="h-8 w-auto" src="/bank-logo.png" />
+    <img
+      alt="Questions Bank"
+      className="h-8 w-auto"
+      src="/logos/bank-logo.png"
+    />
   ),
   navigation,
   showGlobalNav: false,
-  title: 'Questions Bank',
+  title: 'Tech Interview Question Bank',
   titleHref: '/questions',
 };
 

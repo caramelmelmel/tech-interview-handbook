@@ -5,7 +5,7 @@ import { ArrowPathIcon } from '@heroicons/react/20/solid';
 import type { QuestionsQuestionType } from '@prisma/client';
 import type { TypeaheadOption } from '@tih/ui';
 import { CheckboxInput } from '@tih/ui';
-import { Button, HorizontalDivider, Select, TextArea } from '@tih/ui';
+import { Button, Select, TextArea } from '@tih/ui';
 
 import { QUESTION_TYPES } from '~/utils/questions/constants';
 import relabelQuestionAggregates from '~/utils/questions/relabelQuestionAggregates';
@@ -53,6 +53,10 @@ export default function ContributeQuestionForm({
   } = useForm<ContributeQuestionData>({
     defaultValues: {
       date: startOfMonth(new Date()),
+      ...({
+        questionType: null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any),
     },
   });
 
@@ -101,7 +105,6 @@ export default function ContributeQuestionForm({
         onSubmit={handleSubmit(onSubmit)}>
         <div className="min-w-[113px] max-w-[113px] flex-1">
           <Select
-            defaultValue="coding"
             label="Type"
             options={QUESTION_TYPES}
             required={true}
@@ -128,7 +131,6 @@ export default function ContributeQuestionForm({
                   {...field}
                   required={true}
                   onSelect={(option) => {
-                    // @ts-ignore TODO(questions): handle potentially null value.
                     field.onChange(option);
                   }}
                 />
@@ -141,6 +143,7 @@ export default function ContributeQuestionForm({
               name="date"
               render={({ field }) => (
                 <MonthYearPicker
+                  className="space-x-2"
                   monthRequired={true}
                   value={{
                     month: ((field.value.getMonth() as number) + 1) as Month,
@@ -148,7 +151,9 @@ export default function ContributeQuestionForm({
                   }}
                   yearRequired={true}
                   onChange={({ month, year }) => {
-                    field.onChange(startOfMonth(new Date(year!, month! - 1)));
+                    field.onChange(
+                      new Date(Date.UTC(year!, month! - 1, 1, 0, 0, 0, 0)),
+                    );
                   }}
                 />
               )}
@@ -164,7 +169,6 @@ export default function ContributeQuestionForm({
                 <CompanyTypeahead
                   {...field}
                   required={true}
-                  // @ts-ignore TODO(questions): handle potentially null value.
                   onSelect={({ id }) => {
                     field.onChange(id);
                   }}
@@ -181,7 +185,6 @@ export default function ContributeQuestionForm({
                   {...field}
                   required={true}
                   onSelect={(option) => {
-                    // @ts-ignore TODO(questions): handle potentially null value.
                     field.onChange(option);
                   }}
                 />
@@ -189,11 +192,9 @@ export default function ContributeQuestionForm({
             />
           </div>
         </div>
-        <div className="w-full">
-          <HorizontalDivider />
-        </div>
+
         <h2
-          className="text-primary-900 mb-3
+          className="text-primary-900
         text-lg font-semibold
         ">
           Are these questions the same as yours?
@@ -222,12 +223,7 @@ export default function ContributeQuestionForm({
                 createEncounterButtonText="Yes, this is my question"
                 questionId={question.id}
                 roles={roleCounts}
-                timestamp={
-                  question.seenAt.toLocaleDateString(undefined, {
-                    month: 'short',
-                    year: 'numeric',
-                  }) ?? null
-                }
+                timestamp={question.lastSeenAt}
                 type={question.type}
                 onReceivedSubmit={async (data) => {
                   await addEncounterAsync({
@@ -245,11 +241,13 @@ export default function ContributeQuestionForm({
               />
             );
           })}
-          {similarQuestions?.length === 0 && (
-            <p className="font-semibold text-slate-900">
-              No similar questions found.
-            </p>
-          )}
+          {similarQuestions?.length === 0 &&
+            contentToCheck?.length !== 0 &&
+            questionContent === contentToCheck && (
+              <p className="font-semibold text-slate-900">
+                No similar questions found.
+              </p>
+            )}
         </div>
         <div
           className="bg-primary-50 flex w-full flex-col gap-y-2 py-3 shadow-[0_0_0_100vmax_theme(colors.primary.50)] sm:flex-row sm:justify-between"
@@ -270,18 +268,13 @@ export default function ContributeQuestionForm({
             />
           </div>
           <div className="flex gap-x-2">
-            <button
-              className="focus:ring-primary-500 inline-flex w-full justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-base font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-              type="button"
-              onClick={onDiscard}>
-              Discard
-            </button>
+            <Button label="Discard" variant="tertiary" onClick={onDiscard} />
             <Button
-              className="bg-primary-600 hover:bg-primary-700 focus:ring-primary-500 inline-flex w-full justify-center rounded-md border border-transparent px-4 py-2 text-base font-medium text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:bg-slate-400 sm:ml-3 sm:w-auto sm:text-sm"
               disabled={!checkedSimilar}
               label="Contribute"
               type="submit"
-              variant="primary"></Button>
+              variant="primary"
+            />
           </div>
         </div>
       </form>

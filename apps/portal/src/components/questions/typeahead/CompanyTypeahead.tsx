@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
-import { trpc } from '~/utils/trpc';
+import useCompanyOptions from '~/utils/shared/useCompanyOptions';
 
 import type { ExpandedTypeaheadProps } from './ExpandedTypeahead';
 import ExpandedTypeahead from './ExpandedTypeahead';
@@ -13,26 +13,12 @@ export type CompanyTypeaheadProps = Omit<
 export default function CompanyTypeahead(props: CompanyTypeaheadProps) {
   const [query, setQuery] = useState('');
 
-  const { data: companies } = trpc.useQuery([
-    'companies.list',
-    {
-      name: query,
-    },
-  ]);
-
-  const companyOptions = useMemo(() => {
-    return (
-      companies?.map(({ id, name }) => ({
-        id,
-        label: name,
-        value: id,
-      })) ?? []
-    );
-  }, [companies]);
+  const { data: companyOptions, isLoading } = useCompanyOptions(query);
 
   return (
     <ExpandedTypeahead
       {...(props as ExpandedTypeaheadProps)}
+      isLoading={isLoading}
       label="Company"
       options={companyOptions}
       onQueryChange={setQuery}

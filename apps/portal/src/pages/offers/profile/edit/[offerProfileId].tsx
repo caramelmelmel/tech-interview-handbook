@@ -1,9 +1,13 @@
+import type { GetServerSideProps, InferGetServerSidePropsType } from 'next';
 import Error from 'next/error';
+import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useState } from 'react';
 import { JobType } from '@prisma/client';
 
-import OffersSubmissionForm from '~/components/offers/offersSubmission/OffersSubmissionForm';
+import OffersSubmissionForm, {
+  DEFAULT_CURRENCY,
+} from '~/components/offers/offersSubmission/OffersSubmissionForm';
 import type { OffersProfileFormData } from '~/components/offers/types';
 
 import { Spinner } from '~/../../../packages/ui/dist';
@@ -11,7 +15,17 @@ import { getProfilePath } from '~/utils/offers/link';
 import { convertToMonthYear } from '~/utils/offers/time';
 import { trpc } from '~/utils/trpc';
 
-export default function OffersEditPage() {
+export const getServerSideProps: GetServerSideProps = async ({ req }) => {
+  return {
+    props: {
+      country: req.cookies.country ?? null,
+    },
+  };
+};
+
+export default function OffersEditPage({
+  country,
+}: InferGetServerSidePropsType<typeof getServerSideProps>) {
   const [initialData, setInitialData] = useState<OffersProfileFormData>();
   const router = useRouter();
   const { offerProfileId, token = '' } = router.query;
@@ -36,16 +50,24 @@ export default function OffersEditPage() {
               experiences.length === 0
                 ? [{ jobType: JobType.FULLTIME }]
                 : experiences.map((exp) => ({
+                    cityId: exp.location?.cityId,
+                    cityName: exp.location?.cityName,
                     companyId: exp.company?.id,
                     companyName: exp.company?.name,
                     durationInMonths: exp.durationInMonths,
                     id: exp.id,
                     jobType: exp.jobType,
                     level: exp.level,
-                    location: exp.location,
-                    monthlySalary: exp.monthlySalary,
+                    monthlySalary: {
+                      currency: exp.monthlySalary?.currency || DEFAULT_CURRENCY,
+                      value: exp.monthlySalary?.value,
+                    },
                     title: exp.title,
-                    totalCompensation: exp.totalCompensation,
+                    totalCompensation: {
+                      currency:
+                        exp.totalCompensation?.currency || DEFAULT_CURRENCY,
+                      value: exp.totalCompensation?.value,
+                    },
                   })),
             id,
             specificYoes,
@@ -53,12 +75,13 @@ export default function OffersEditPage() {
           },
           id: data.id,
           offers: data.offers.map((offer) => ({
+            cityId: offer.location.cityId,
+            cityName: offer.location.cityName,
             comments: offer.comments,
             companyId: offer.company.id,
             companyName: offer.company.name,
             id: offer.id,
             jobType: offer.jobType,
-            location: offer.location,
             monthYearReceived: convertToMonthYear(offer.monthYearReceived),
             negotiationStrategy: offer.negotiationStrategy,
             offersFullTime: offer.offersFullTime,
@@ -77,6 +100,9 @@ export default function OffersEditPage() {
 
   return (
     <>
+      <Head>
+        <title>Edit profile</title>
+      </Head>
       {getProfileResult.isError && (
         <div className="flex w-full justify-center">
           <Error statusCode={404} title="Requested profile does not exist" />
@@ -89,6 +115,7 @@ export default function OffersEditPage() {
       )}
       {!getProfileResult.isLoading && initialData && (
         <OffersSubmissionForm
+          country={country}
           initialOfferProfileValues={initialData}
           profileId={profile?.id}
           token={profile?.editToken || undefined}

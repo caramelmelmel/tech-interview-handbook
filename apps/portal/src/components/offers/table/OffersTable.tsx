@@ -1,97 +1,198 @@
-import clsx from 'clsx';
-import { useEffect, useState } from 'react';
-import { DropdownMenu, Spinner } from '@tih/ui';
+import { useRouter } from 'next/router';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { JobType } from '@prisma/client';
+import { DropdownMenu, Spinner, useToast } from '@tih/ui';
 
 import { useGoogleAnalytics } from '~/components/global/GoogleAnalytics';
+import OffersRow from '~/components/offers/table//OffersRow';
+import OffersHeader from '~/components/offers/table/OffersHeader';
 import OffersTablePagination from '~/components/offers/table/OffersTablePagination';
+import type {
+  OfferTableColumn,
+  OfferTableSortType,
+} from '~/components/offers/table/types';
 import {
-  OfferTableFilterOptions,
-  OfferTableSortBy,
-  OfferTableTabOptions,
-  YOE_CATEGORY,
+  FullTimeOfferTableColumns,
+  InternOfferTableColumns,
+  OFFER_TABLE_SORT_ORDER,
+  OfferTableYoeOptions,
+  YOE_CATEGORY_PARAM,
 } from '~/components/offers/table/types';
 
-import { Currency } from '~/utils/offers/currency/CurrencyEnum';
+import { getCurrencyForCountry } from '~/utils/offers/currency/CurrencyEnum';
 import CurrencySelector from '~/utils/offers/currency/CurrencySelector';
+import { useSearchParamSingle } from '~/utils/offers/useSearchParam';
 import { trpc } from '~/utils/trpc';
-
-import OffersRow from './OffersRow';
 
 import type { DashboardOffer, GetOffersResponse, Paging } from '~/types/offers';
 
-const NUMBER_OF_OFFERS_IN_PAGE = 10;
+const NUMBER_OF_OFFERS_PER_PAGE = 20;
+
 export type OffersTableProps = Readonly<{
   companyFilter: string;
+  companyName?: string;
+  country: string | null;
+  countryFilter: string;
   jobTitleFilter: string;
+  onSort: (
+    sortDirection: OFFER_TABLE_SORT_ORDER,
+    sortType: OfferTableSortType | null,
+  ) => void;
+  selectedSortDirection: OFFER_TABLE_SORT_ORDER;
+  selectedSortType: OfferTableSortType | null;
 }>;
+
 export default function OffersTable({
+  country,
+  countryFilter,
+  companyName,
   companyFilter,
   jobTitleFilter,
+  selectedSortDirection,
+  selectedSortType,
+  onSort,
 }: OffersTableProps) {
-  const [currency, setCurrency] = useState(Currency.SGD.toString()); // TODO: Detect location
-  const [selectedTab, setSelectedTab] = useState(YOE_CATEGORY.ENTRY);
+  const [currency, setCurrency] = useState(
+    getCurrencyForCountry(country).toString(),
+  );
+  const [jobType, setJobType] = useState<JobType>(JobType.FULLTIME);
   const [pagination, setPagination] = useState<Paging>({
     currentPage: 0,
     numOfItems: 0,
     numOfPages: 0,
     totalItems: 0,
   });
+
   const [offers, setOffers] = useState<Array<DashboardOffer>>([]);
-  const [selectedFilter, setSelectedFilter] = useState(
-    OfferTableFilterOptions[0].value,
-  );
+
   const { event: gaEvent } = useGoogleAnalytics();
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(true);
+
+  const [
+    selectedYoeCategory,
+    setSelectedYoeCategory,
+    isYoeCategoryInitialized,
+  ] = useSearchParamSingle<keyof typeof YOE_CATEGORY_PARAM>('yoeCategory');
+
+  const [, , isSortDirectionInitialized] =
+    useSearchParamSingle<OFFER_TABLE_SORT_ORDER>('sortDirection');
+
+  const [, , isSortTypeInitialized] =
+    useSearchParamSingle<OfferTableSortType | null>('sortType');
+
+  const areFilterParamsInitialized = useMemo(() => {
+    return (
+      isYoeCategoryInitialized &&
+      isSortDirectionInitialized &&
+      isSortTypeInitialized
+    );
+  }, [
+    isYoeCategoryInitialized,
+    isSortDirectionInitialized,
+    isSortTypeInitialized,
+  ]);
+  const { pathname } = router;
+
   useEffect(() => {
-    setPagination({
-      currentPage: 0,
-      numOfItems: 0,
-      numOfPages: 0,
-      totalItems: 0,
-    });
-  }, [selectedTab, currency]);
-  const offersQuery = trpc.useQuery(
+    if (areFilterParamsInitialized) {
+      router.replace(
+        {
+          pathname,
+          query: {
+            companyId: companyFilter,
+            companyName,
+            jobTitleId: jobTitleFilter,
+            sortDirection: selectedSortDirection,
+            sortType: selectedSortType,
+            yoeCategory: selectedYoeCategory,
+          },
+        },
+        undefined,
+        { shallow: true },
+      );
+      setPagination({
+        currentPage: 0,
+        numOfItems: 0,
+        numOfPages: 0,
+        totalItems: 0,
+      });
+      setIsLoading(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    areFilterParamsInitialized,
+    currency,
+    countryFilter,
+    companyFilter,
+    jobTitleFilter,
+    selectedSortDirection,
+    selectedSortType,
+    selectedYoeCategory,
+    pathname,
+  ]);
+
+  const topRef = useRef<HTMLDivElement>(null);
+  const { showToast } = useToast();
+  const { isLoading: isResultsLoading } = trpc.useQuery(
     [
       'offers.list',
       {
         companyId: companyFilter,
+        countryId: countryFilter,
         currency,
-        limit: NUMBER_OF_OFFERS_IN_PAGE,
-        location: 'Singapore, Singapore', // TODO: Geolocation
+        limit: NUMBER_OF_OFFERS_PER_PAGE,
         offset: pagination.currentPage,
-        sortBy: OfferTableSortBy[selectedFilter] ?? '-monthYearReceived',
+        sortBy:
+          selectedSortDirection && selectedSortType
+            ? `${selectedSortDirection}${selectedSortType}`
+            : '-monthYearReceived',
         title: jobTitleFilter,
-        yoeCategory: selectedTab,
+        yoeCategory: selectedYoeCategory
+          ? YOE_CATEGORY_PARAM[selectedYoeCategory as string]
+          : undefined,
       },
     ],
     {
-      onError: (err) => {
-        alert(err);
+      onError: () => {
+        showToast({
+          title: 'Error loading the page.',
+          variant: 'failure',
+        });
+        setIsLoading(false);
       },
       onSuccess: (response: GetOffersResponse) => {
         setOffers(response.data);
         setPagination(response.paging);
+        setJobType(response.jobType);
+        setIsLoading(false);
       },
     },
   );
 
   function renderFilters() {
     return (
-      <div className="m-4 flex items-center justify-between">
+      <div className="flex items-center justify-between p-4 text-xs text-slate-700 sm:grid-cols-4 sm:text-sm md:text-base">
         <DropdownMenu
           align="start"
           label={
-            OfferTableTabOptions.filter(
-              ({ value: itemValue }) => itemValue === selectedTab,
-            )[0].label
+            OfferTableYoeOptions.filter(
+              ({ value: itemValue }) => itemValue === selectedYoeCategory,
+            ).length > 0
+              ? OfferTableYoeOptions.filter(
+                  ({ value: itemValue }) => itemValue === selectedYoeCategory,
+                )[0].label
+              : OfferTableYoeOptions[0].label
           }
-          size="inherit">
-          {OfferTableTabOptions.map(({ label: itemLabel, value }) => (
+          size="md">
+          {OfferTableYoeOptions.map(({ label: itemLabel, value }) => (
             <DropdownMenu.Item
               key={value}
-              isSelected={value === selectedTab}
+              isSelected={value === selectedYoeCategory}
               label={itemLabel}
               onClick={() => {
-                setSelectedTab(value);
+                setSelectedYoeCategory(value);
+                onSort(OFFER_TABLE_SORT_ORDER.UNSORTED, null);
                 gaEvent({
                   action: `offers.table_filter_yoe_category_${value}`,
                   category: 'engagement',
@@ -101,34 +202,15 @@ export default function OffersTable({
             />
           ))}
         </DropdownMenu>
-        <div className="divide-x-slate-200 flex items-center space-x-4 divide-x">
-          <div className="justify-left flex items-center space-x-2">
-            <span>View all offers in</span>
+        <div className="divide-x-slate-200 col-span-3 flex items-center justify-end space-x-4 divide-x">
+          <div className="justify-left flex items-center space-x-2 font-medium text-slate-700">
+            <span className="sr-only sm:not-sr-only sm:inline">
+              Display offers in
+            </span>
             <CurrencySelector
               handleCurrencyChange={(value: string) => setCurrency(value)}
               selectedCurrency={currency}
             />
-          </div>
-          <div className="pl-4">
-            <DropdownMenu
-              align="end"
-              label={
-                OfferTableFilterOptions.filter(
-                  ({ value: itemValue }) => itemValue === selectedFilter,
-                )[0].label
-              }
-              size="inherit">
-              {OfferTableFilterOptions.map(({ label: itemLabel, value }) => (
-                <DropdownMenu.Item
-                  key={value}
-                  isSelected={value === selectedFilter}
-                  label={itemLabel}
-                  onClick={() => {
-                    setSelectedFilter(value);
-                  }}
-                />
-              ))}
-            </DropdownMenu>
           </div>
         </div>
       </div>
@@ -136,29 +218,27 @@ export default function OffersTable({
   }
 
   function renderHeader() {
-    const columns = [
-      'Company',
-      'Title',
-      'YOE',
-      selectedTab === YOE_CATEGORY.INTERN ? 'Monthly Salary' : 'Annual TC',
-      'Date Offered',
-      'Actions',
-    ];
+    const columns: Array<OfferTableColumn> =
+      jobType === JobType.FULLTIME
+        ? FullTimeOfferTableColumns
+        : InternOfferTableColumns;
+
     return (
-      <thead className="text-slate-700">
+      <thead className="font-semibold">
         <tr className="divide-x divide-slate-200">
           {columns.map((header, index) => (
-            <th
-              key={header}
-              className={clsx(
-                'bg-slate-100 py-3 px-6',
-                // Make last column sticky.
-                index === columns.length - 1 &&
-                  'sticky right-0 drop-shadow md:drop-shadow-none',
-              )}
-              scope="col">
-              {header}
-            </th>
+            <OffersHeader
+              key={header.label}
+              header={header.label}
+              isLastColumn={index === columns.length - 1}
+              sortDirection={
+                header.sortType === selectedSortType
+                  ? selectedSortDirection
+                  : undefined
+              }
+              sortType={header.sortType}
+              onSort={onSort}
+            />
           ))}
         </tr>
       </thead>
@@ -172,34 +252,55 @@ export default function OffersTable({
   };
 
   return (
-    <div className="w-5/6">
-      <div className="relative w-full border border-slate-200">
-        {renderFilters()}
-        {offersQuery.isLoading ? (
-          <div className="col-span-10 pt-4">
+    <div className="relative w-full divide-y divide-slate-200 border border-slate-200 bg-white">
+      <div ref={topRef}>{renderFilters()}</div>
+      <OffersTablePagination
+        endNumber={
+          pagination.currentPage * NUMBER_OF_OFFERS_PER_PAGE + offers.length
+        }
+        handlePageChange={handlePageChange}
+        isInitialFetch={isLoading}
+        isLoading={isResultsLoading}
+        pagination={pagination}
+        startNumber={pagination.currentPage * NUMBER_OF_OFFERS_PER_PAGE + 1}
+      />
+      <div className="overflow-x-auto text-slate-600">
+        <table className="w-full divide-y divide-slate-200 text-left text-xs text-slate-700 sm:text-sm">
+          {renderHeader()}
+          {!isLoading && (
+            <tbody className="divide-y divide-slate-200">
+              {offers.map((offer) => (
+                <OffersRow key={offer.id} jobType={jobType} row={offer} />
+              ))}
+            </tbody>
+          )}
+        </table>
+        {isLoading && (
+          <div className="flex justify-center py-32">
             <Spinner display="block" size="lg" />
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full divide-y divide-slate-200 border-y border-slate-200 text-left text-slate-600">
-              {renderHeader()}
-              <tbody>
-                {offers.map((offer) => (
-                  <OffersRow key={offer.id} row={offer} />
-                ))}
-              </tbody>
-            </table>
+        )}
+        {!isLoading && (!offers || offers.length === 0) && (
+          <div className="py-16 text-lg">
+            <div className="flex justify-center">No data yet 🥺</div>
           </div>
         )}
-        <OffersTablePagination
-          endNumber={
-            pagination.currentPage * NUMBER_OF_OFFERS_IN_PAGE + offers.length
-          }
-          handlePageChange={handlePageChange}
-          pagination={pagination}
-          startNumber={pagination.currentPage * NUMBER_OF_OFFERS_IN_PAGE + 1}
-        />
       </div>
+      <OffersTablePagination
+        endNumber={
+          pagination.currentPage * NUMBER_OF_OFFERS_PER_PAGE + offers.length
+        }
+        handlePageChange={(number) => {
+          topRef?.current?.scrollIntoView({
+            block: 'start',
+          });
+          handlePageChange(number);
+        }}
+        isInitialFetch={isLoading}
+        isLoading={isResultsLoading}
+        pagination={pagination}
+        startNumber={pagination.currentPage * NUMBER_OF_OFFERS_PER_PAGE + 1}
+      />
     </div>
   );
 }

@@ -28,13 +28,18 @@ export const QUESTION_TYPES: FilterChoices<QuestionsQuestionType> = [
   },
   {
     id: 'SYSTEM_DESIGN',
-    label: 'Design',
+    label: 'System Design',
     value: 'SYSTEM_DESIGN',
   },
   {
     id: 'BEHAVIORAL',
     label: 'Behavioral',
     value: 'BEHAVIORAL',
+  },
+  {
+    id: 'THEORY',
+    label: 'Theory',
+    value: 'THEORY',
   },
 ] as const;
 
@@ -65,23 +70,38 @@ export const QUESTION_AGES: FilterChoices<QuestionAge> = [
 
 export const SORT_ORDERS = [
   {
-    label: 'Ascending',
-    value: SortOrder.ASC,
-  },
-  {
     label: 'Descending',
     value: SortOrder.DESC,
+  },
+  {
+    label: 'Ascending',
+    value: SortOrder.ASC,
   },
 ];
 
 export const SORT_TYPES = [
   {
-    label: 'New',
+    label: 'Upvotes',
+    value: SortType.TOP,
+  },
+  {
+    label: 'Date',
+    value: SortType.NEW,
+  },
+];
+
+export const QUESTION_SORT_TYPES = [
+  {
+    label: 'Upvotes',
+    value: SortType.TOP,
+  },
+  {
+    label: 'Age',
     value: SortType.NEW,
   },
   {
-    label: 'Top',
-    value: SortType.TOP,
+    label: 'Received',
+    value: SortType.ENCOUNTERS,
   },
 ];
 

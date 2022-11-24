@@ -3,7 +3,7 @@ import { useState } from 'react';
 import type { TypeaheadOption } from '@tih/ui';
 import { Typeahead } from '@tih/ui';
 
-import { trpc } from '~/utils/trpc';
+import useCompanyOptions from '~/utils/shared/useCompanyOptions';
 
 type BaseProps = Pick<
   ComponentProps<typeof Typeahead>,
@@ -27,27 +27,16 @@ export default function CompaniesTypeahead({
   ...props
 }: Props) {
   const [query, setQuery] = useState('');
-  const companies = trpc.useQuery([
-    'companies.list',
-    {
-      name: query,
-    },
-  ]);
 
-  const { data } = companies;
+  const { data: companyOptions, isLoading } = useCompanyOptions(query);
 
   return (
     <Typeahead
+      isLoading={isLoading}
       label="Company"
       noResultsMessage="No companies found"
       nullable={true}
-      options={
-        data?.map(({ id, name }) => ({
-          id,
-          label: name,
-          value: id,
-        })) ?? []
-      }
+      options={companyOptions}
       value={value}
       onQueryChange={setQuery}
       onSelect={onSelect}

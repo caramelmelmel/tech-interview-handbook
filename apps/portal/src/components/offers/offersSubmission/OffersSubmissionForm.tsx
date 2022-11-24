@@ -4,19 +4,24 @@ import type { SubmitHandler } from 'react-hook-form';
 import { FormProvider, useForm } from 'react-hook-form';
 import { ArrowLeftIcon, ArrowRightIcon } from '@heroicons/react/20/solid';
 import { JobType } from '@prisma/client';
-import { Button } from '@tih/ui';
+import { Button, Spinner, useToast } from '@tih/ui';
 
 import { useGoogleAnalytics } from '~/components/global/GoogleAnalytics';
-import type { BreadcrumbStep } from '~/components/offers/Breadcrumb';
-import { Breadcrumbs } from '~/components/offers/Breadcrumb';
+import type { BreadcrumbStep } from '~/components/offers/Breadcrumbs';
+import { Breadcrumbs } from '~/components/offers/Breadcrumbs';
 import BackgroundForm from '~/components/offers/offersSubmission/submissionForm/BackgroundForm';
 import OfferDetailsForm from '~/components/offers/offersSubmission/submissionForm/OfferDetailsForm';
 import type {
   OfferFormData,
+  OfferPostData,
   OffersProfileFormData,
 } from '~/components/offers/types';
 import type { Month } from '~/components/shared/MonthYearPicker';
 
+import {
+  Currency,
+  getCurrencyForCountry,
+} from '~/utils/offers/currency/CurrencyEnum';
 import {
   cleanObject,
   removeEmptyObjects,
@@ -25,17 +30,19 @@ import {
 import { getCurrentMonth, getCurrentYear } from '~/utils/offers/time';
 import { trpc } from '~/utils/trpc';
 
+export const DEFAULT_CURRENCY = Currency.SGD;
+
 const defaultOfferValues = {
+  cityId: '',
   comments: '',
   companyId: '',
-  jobTitle: '',
   jobType: JobType.FULLTIME,
-  location: '',
   monthYearReceived: {
     month: getCurrentMonth() as Month,
     year: getCurrentYear(),
   },
   negotiationStrategy: '',
+  title: '',
 };
 
 export const defaultFullTimeOfferValues = {
@@ -43,21 +50,17 @@ export const defaultFullTimeOfferValues = {
   jobType: JobType.FULLTIME,
   offersFullTime: {
     baseSalary: {
-      currency: 'SGD',
-      value: null,
+      currency: DEFAULT_CURRENCY,
     },
     bonus: {
-      currency: 'SGD',
-      value: null,
+      currency: DEFAULT_CURRENCY,
     },
     level: '',
     stocks: {
-      currency: 'SGD',
-      value: null,
+      currency: DEFAULT_CURRENCY,
     },
     totalCompensation: {
-      currency: 'SGD',
-      value: null,
+      currency: DEFAULT_CURRENCY,
     },
   },
 };
@@ -66,16 +69,15 @@ export const defaultInternshipOfferValues = {
   ...defaultOfferValues,
   jobType: JobType.INTERN,
   offersIntern: {
-    internshipCycle: null,
+    internshipCycle: '',
     monthlySalary: {
-      currency: 'SGD',
-      value: null,
+      currency: DEFAULT_CURRENCY,
     },
-    startYear: null,
+    startYear: getCurrentYear(),
   },
 };
 
-const defaultOfferProfileValues = {
+const defaultOfferProfileValues: OffersProfileFormData = {
   background: {
     educations: [],
     experiences: [{ jobType: JobType.FULLTIME }],
@@ -86,6 +88,7 @@ const defaultOfferProfileValues = {
 };
 
 type Props = Readonly<{
+  country: string | null;
   initialOfferProfileValues?: OffersProfileFormData;
   profileId?: string;
   token?: string;
@@ -95,6 +98,7 @@ export default function OffersSubmissionForm({
   initialOfferProfileValues = defaultOfferProfileValues,
   profileId: editProfileId = '',
   token: editToken = '',
+  country,
 }: Props) {
   const [step, setStep] = useState(0);
   const [params, setParams] = useState({
@@ -102,12 +106,14 @@ export default function OffersSubmissionForm({
     token: editToken,
   });
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const { event: gaEvent } = useGoogleAnalytics();
 
+  const { event: gaEvent } = useGoogleAnalytics();
+  const { showToast } = useToast();
   const router = useRouter();
   const pageRef = useRef<HTMLDivElement>(null);
   const scrollToTop = () =>
     pageRef.current?.scrollTo({ behavior: 'smooth', top: 0 });
+
   const formMethods = useForm<OffersProfileFormData>({
     defaultValues: initialOfferProfileValues,
     mode: 'all',
@@ -115,7 +121,7 @@ export default function OffersSubmissionForm({
   const {
     handleSubmit,
     trigger,
-    formState: { isSubmitting, isSubmitSuccessful },
+    formState: { isSubmitting, isDirty },
   } = formMethods;
 
   const generateAnalysisMutation = trpc.useMutation(
@@ -123,6 +129,10 @@ export default function OffersSubmissionForm({
     {
       onError(error) {
         console.error(error.message);
+        showToast({
+          title: 'Error generating analysis.',
+          variant: 'failure',
+        });
       },
       onSuccess() {
         router.push(
@@ -132,12 +142,11 @@ export default function OffersSubmissionForm({
     },
   );
 
+  const defaultCurrency = getCurrencyForCountry(country).toString();
+
   const steps = [
-    <OfferDetailsForm
-      key={0}
-      defaultJobType={initialOfferProfileValues.offers[0].jobType}
-    />,
-    <BackgroundForm key={1} />,
+    <OfferDetailsForm key={0} defaultCurrency={defaultCurrency} />,
+    <BackgroundForm key={1} defaultCurrency={defaultCurrency} />,
   ];
 
   const breadcrumbSteps: Array<BreadcrumbStep> = [
@@ -157,14 +166,14 @@ export default function OffersSubmissionForm({
     },
   ];
 
-  const goToNextStep = async (currStep: number) => {
-    if (currStep === 0) {
+  const setStepWithValidation = async (nextStep: number) => {
+    if (nextStep === 1) {
       const result = await trigger('offers');
       if (!result) {
         return;
       }
     }
-    setStep(step + 1);
+    setStep(nextStep);
   };
 
   const mutationpath =
@@ -175,16 +184,30 @@ export default function OffersSubmissionForm({
   const createOrUpdateMutation = trpc.useMutation([mutationpath], {
     onError(error) {
       console.error(error.message);
+      showToast({
+        title:
+          editProfileId && editToken
+            ? 'Error updating offer profile.'
+            : 'Error creating offer profile.',
+        variant: 'failure',
+      });
     },
     onSuccess(data) {
       setParams({ profileId: data.id, token: data.token });
       setIsSubmitted(true);
+      showToast({
+        title:
+          editProfileId && editToken
+            ? 'Offer profile updated successfully!'
+            : 'Offer profile created successfully!',
+        variant: 'success',
+      });
     },
   });
 
   const onSubmit: SubmitHandler<OffersProfileFormData> = async (data) => {
     const result = await trigger();
-    if (!result || isSubmitting || isSubmitSuccessful) {
+    if (!result || isSubmitting || createOrUpdateMutation.isLoading) {
       return;
     }
 
@@ -205,7 +228,7 @@ export default function OffersSubmissionForm({
         offer.monthYearReceived.year,
         offer.monthYearReceived.month - 1, // Convert month to monthIndex
       ),
-    }));
+    })) as Array<OfferPostData>;
 
     if (params.profileId && params.token) {
       createOrUpdateMutation.mutate({
@@ -241,11 +264,14 @@ export default function OffersSubmissionForm({
     const warningText =
       'Leave this page? Changes that you made will not be saved.';
     const handleWindowClose = (e: BeforeUnloadEvent) => {
+      if (!isDirty) {
+        return;
+      }
       e.preventDefault();
       return (e.returnValue = warningText);
     };
     const handleRouteChange = (url: string) => {
-      if (url.includes('/offers/submit/result')) {
+      if (url.includes('/offers/submit/result') || !isDirty) {
         return;
       }
       if (window.confirm(warningText)) {
@@ -261,67 +287,81 @@ export default function OffersSubmissionForm({
       router.events.off('routeChangeStart', handleRouteChange);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isDirty]);
 
-  return (
-    <div ref={pageRef} className="fixed h-full w-full overflow-y-scroll">
-      <div className="mb-20 flex justify-center">
-        <div className="my-5 block w-full max-w-screen-md rounded-lg bg-white py-10 px-10 shadow-lg">
-          <div className="mb-4 flex justify-end">
+  return generateAnalysisMutation.isLoading ? (
+    <Spinner className="m-10" display="block" size="lg" />
+  ) : (
+    <div ref={pageRef} className="w-full">
+      <div className="flex justify-center">
+        <div className="block w-full max-w-screen-md overflow-hidden rounded-lg sm:shadow-lg md:my-10">
+          <div className="flex justify-center bg-slate-100 px-4 py-4 sm:px-6 lg:px-8">
             <Breadcrumbs
               currentStep={step}
-              setStep={setStep}
+              setStep={setStepWithValidation}
               steps={breadcrumbSteps}
             />
           </div>
-          <FormProvider {...formMethods}>
-            <form className="text-sm" onSubmit={handleSubmit(onSubmit)}>
-              {steps[step]}
-              {/* <pre>{JSON.stringify(formMethods.watch(), null, 2)}</pre> */}
-              {step === 0 && (
-                <div className="flex justify-end">
-                  <Button
-                    disabled={false}
-                    icon={ArrowRightIcon}
-                    label="Next"
-                    variant="secondary"
-                    onClick={() => {
-                      goToNextStep(step);
-                      gaEvent({
-                        action: 'offers.profile_submission_navigate_next',
-                        category: 'submission',
-                        label: 'Navigate next',
-                      });
-                    }}
-                  />
-                </div>
-              )}
-              {step === 1 && (
-                <div className="flex items-center justify-between">
-                  <Button
-                    icon={ArrowLeftIcon}
-                    label="Previous"
-                    variant="secondary"
-                    onClick={() => {
-                      setStep(step - 1);
-                      gaEvent({
-                        action: 'offers.profile_submission_navigation_back',
-                        category: 'submission',
-                        label: 'Navigate back',
-                      });
-                    }}
-                  />
-                  <Button
-                    disabled={isSubmitting || isSubmitSuccessful}
-                    isLoading={isSubmitting || isSubmitSuccessful}
-                    label="Submit"
-                    type="submit"
-                    variant="primary"
-                  />
-                </div>
-              )}
-            </form>
-          </FormProvider>
+          <div className="bg-white p-6 sm:p-10">
+            <FormProvider {...formMethods}>
+              <form
+                className="space-y-6 text-sm"
+                onSubmit={handleSubmit(onSubmit)}>
+                {steps[step]}
+                {step === 0 && (
+                  <div className="flex justify-end">
+                    <Button
+                      disabled={false}
+                      icon={ArrowRightIcon}
+                      label="Next"
+                      variant="primary"
+                      onClick={() => {
+                        setStepWithValidation(step + 1);
+                        gaEvent({
+                          action: 'offers.profile_submission_navigate_next',
+                          category: 'submission',
+                          label: 'Navigate next',
+                        });
+                      }}
+                    />
+                  </div>
+                )}
+                {step === 1 && (
+                  <div className="flex items-center justify-between">
+                    <Button
+                      addonPosition="start"
+                      icon={ArrowLeftIcon}
+                      label="Previous"
+                      variant="secondary"
+                      onClick={() => {
+                        setStep(step - 1);
+                        gaEvent({
+                          action: 'offers.profile_submission_navigation_back',
+                          category: 'submission',
+                          label: 'Navigate back',
+                        });
+                      }}
+                    />
+                    <Button
+                      disabled={
+                        isSubmitting ||
+                        createOrUpdateMutation.isLoading ||
+                        generateAnalysisMutation.isLoading ||
+                        generateAnalysisMutation.isSuccess
+                      }
+                      icon={ArrowRightIcon}
+                      isLoading={
+                        isSubmitting || createOrUpdateMutation.isLoading
+                      }
+                      label="Submit"
+                      type="submit"
+                      variant="primary"
+                    />
+                  </div>
+                )}
+              </form>
+            </FormProvider>
+          </div>
         </div>
       </div>
     </div>

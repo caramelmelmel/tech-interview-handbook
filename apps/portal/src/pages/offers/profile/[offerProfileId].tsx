@@ -1,4 +1,5 @@
 import Error from 'next/error';
+import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useSession } from 'next-auth/react';
 import { useState } from 'react';
@@ -6,6 +7,7 @@ import { Spinner, useToast } from '@tih/ui';
 
 import { useGoogleAnalytics } from '~/components/global/GoogleAnalytics';
 import { ProfileDetailTab } from '~/components/offers/constants';
+import { HOME_URL } from '~/components/offers/constants';
 import ProfileComments from '~/components/offers/profile/ProfileComments';
 import ProfileDetails from '~/components/offers/profile/ProfileDetails';
 import ProfileHeader from '~/components/offers/profile/ProfileHeader';
@@ -13,7 +15,6 @@ import type {
   BackgroundDisplayData,
   OfferDisplayData,
 } from '~/components/offers/types';
-import { HOME_URL } from '~/components/offers/types';
 import type { JobTitleType } from '~/components/shared/JobTitles';
 import { getLabelForJobTitleType } from '~/components/shared/JobTitles';
 
@@ -73,12 +74,13 @@ export default function OfferProfile() {
                     res.offersFullTime.bonus != null
                       ? convertMoneyToString(res.offersFullTime.bonus)
                       : undefined,
-                  companyName: res.company.name,
+                  company: res.company,
                   id: res.offersFullTime.id,
                   jobLevel: res.offersFullTime.level,
                   jobTitle: getLabelForJobTitleType(
                     res.offersFullTime.title as JobTitleType,
                   ),
+                  jobType: res.jobType,
                   location: res.location,
                   negotiationStrategy: res.negotiationStrategy,
                   otherComment: res.comments,
@@ -94,11 +96,13 @@ export default function OfferProfile() {
                 return filteredOffer;
               }
               const filteredOffer: OfferDisplayData = {
-                companyName: res.company.name,
+                company: res.company,
                 id: res.offersIntern!.id,
+                internshipCycle: res.offersIntern!.internshipCycle,
                 jobTitle: getLabelForJobTitleType(
                   res.offersIntern!.title as JobTitleType,
                 ),
+                jobType: res.jobType,
                 location: res.location,
                 monthlySalary: convertMoneyToString(
                   res.offersIntern!.monthlySalary,
@@ -106,6 +110,7 @@ export default function OfferProfile() {
                 negotiationStrategy: res.negotiationStrategy,
                 otherComment: res.comments,
                 receivedMonth: formatDate(res.monthYearReceived),
+                startYear: res.offersIntern!.startYear,
               };
               return filteredOffer;
             })
@@ -125,13 +130,14 @@ export default function OfferProfile() {
             })),
             experiences: data.background.experiences.map(
               (experience): OfferDisplayData => ({
-                companyName: experience.company?.name,
+                company: experience.company,
                 duration: experience.durationInMonths,
                 jobLevel: experience.level,
                 jobTitle: experience.title
                   ? getLabelForJobTitleType(experience.title as JobTitleType)
                   : null,
                 jobType: experience.jobType || undefined,
+                location: experience.location,
                 monthlySalary: experience.monthlySalary
                   ? convertMoneyToString(experience.monthlySalary)
                   : null,
@@ -186,24 +192,27 @@ export default function OfferProfile() {
     }
   }
 
-  return (
+  return getProfileQuery.isError ? (
+    <div className="flex w-full justify-center">
+      <Error statusCode={404} title="Requested profile does not exist." />
+    </div>
+  ) : getProfileQuery.isLoading ? (
+    <div className="flex h-screen w-full items-center justify-center text-slate-500">
+      <div className="flex flex-col gap-2">
+        <Spinner display="block" size="lg" />
+        <p className="text-center">Loading profile...</p>
+      </div>
+    </div>
+  ) : (
     <>
-      {getProfileQuery.isError && (
-        <div className="flex w-full justify-center">
-          <Error statusCode={404} title="Requested profile does not exist" />
-        </div>
-      )}
-      {getProfileQuery.isLoading && (
-        <div className="flex h-screen w-screen">
-          <div className="m-auto mx-auto w-screen justify-center">
-            <Spinner display="block" size="lg" />
-            <div className="text-center">Loading...</div>
-          </div>
-        </div>
-      )}
-      {!getProfileQuery.isLoading && !getProfileQuery.isError && (
-        <div className="mb-4 flex flex h-screen w-screen items-center justify-center divide-x">
-          <div className="h-full w-2/3 divide-y">
+      <Head>
+        <title>
+          {background?.profileName ? background.profileName : 'View profile'}
+        </title>
+      </Head>
+      <div className="w-full divide-x lg:flex">
+        <div className="divide-y lg:w-2/3">
+          <div className="h-fit">
             <ProfileHeader
               background={background}
               handleDelete={handleDelete}
@@ -212,30 +221,32 @@ export default function OfferProfile() {
               selectedTab={selectedTab}
               setSelectedTab={setSelectedTab}
             />
-            <div className="h-4/5 w-full overflow-y-scroll pb-32">
-              <ProfileDetails
-                analysis={analysis}
-                background={background}
-                isEditable={isEditable}
-                isLoading={getProfileQuery.isLoading}
-                offers={offers}
-                profileId={offerProfileId as string}
-                selectedTab={selectedTab}
-              />
-            </div>
           </div>
-          <div className="h-full w-1/3 bg-white">
-            <ProfileComments
-              isDisabled={deleteMutation.isLoading}
+          <div>
+            <ProfileDetails
+              analysis={analysis}
+              background={background}
               isEditable={isEditable}
               isLoading={getProfileQuery.isLoading}
+              offers={offers}
               profileId={offerProfileId as string}
-              profileName={background?.profileName}
-              token={token as string}
+              selectedTab={selectedTab}
             />
           </div>
         </div>
-      )}
+        <div
+          className="bg-white lg:fixed lg:right-0 lg:bottom-0 lg:w-1/3"
+          style={{ top: 64 }}>
+          <ProfileComments
+            isDisabled={deleteMutation.isLoading}
+            isEditable={isEditable}
+            isLoading={getProfileQuery.isLoading}
+            profileId={offerProfileId as string}
+            profileName={background?.profileName}
+            token={token as string}
+          />
+        </div>
+      </div>
     </>
   );
 }

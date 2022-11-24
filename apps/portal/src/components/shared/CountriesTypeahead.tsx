@@ -3,7 +3,7 @@ import { useState } from 'react';
 import type { TypeaheadOption } from '@tih/ui';
 import { Typeahead } from '@tih/ui';
 
-import { trpc } from '~/utils/trpc';
+import useCountryOptions from '~/utils/shared/useCountryOptions';
 
 type BaseProps = Pick<
   ComponentProps<typeof Typeahead>,
@@ -17,37 +17,31 @@ type BaseProps = Pick<
 
 type Props = BaseProps &
   Readonly<{
+    excludedValues?: Set<string>;
+    label?: string;
     onSelect: (option: TypeaheadOption | null) => void;
     value?: TypeaheadOption | null;
   }>;
 
 export default function CountriesTypeahead({
+  excludedValues,
+  label = 'Country',
   onSelect,
   value,
   ...props
 }: Props) {
   const [query, setQuery] = useState('');
-  const countries = trpc.useQuery([
-    'locations.countries.list',
-    {
-      name: query,
-    },
-  ]);
-
-  const { data } = countries;
+  const { data: countryOptions, isLoading } = useCountryOptions(query);
 
   return (
     <Typeahead
-      label="Country"
+      isLoading={isLoading}
+      label={label}
       noResultsMessage="No countries found"
       nullable={true}
-      options={
-        data?.map(({ id, name }) => ({
-          id,
-          label: name,
-          value: id,
-        })) ?? []
-      }
+      options={countryOptions.filter(
+        (option) => !excludedValues?.has(option.value),
+      )}
       value={value}
       onQueryChange={setQuery}
       onSelect={onSelect}

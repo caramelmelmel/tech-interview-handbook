@@ -9,6 +9,7 @@ import {
   NewspaperIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import type { TypeaheadOption } from '@tih/ui';
 import {
   Button,
   CheckboxInput,
@@ -23,23 +24,17 @@ import {
 import { useGoogleAnalytics } from '~/components/global/GoogleAnalytics';
 import ResumeFilterPill from '~/components/resumes/browse/ResumeFilterPill';
 import ResumeListItems from '~/components/resumes/browse/ResumeListItems';
+import ResumeExperienceTypeahead from '~/components/resumes/shared/ResumeExperienceTypeahead';
 import ResumeSignInButton from '~/components/resumes/shared/ResumeSignInButton';
+import CountriesTypeahead from '~/components/shared/CountriesTypeahead';
 import loginPageHref from '~/components/shared/loginPageHref';
 
-import type {
-  Filter,
-  FilterId,
-  FilterLabel,
-  Shortcut,
-} from '~/utils/resumes/resumeFilters';
+import type { Filter, FilterId, Shortcut } from '~/utils/resumes/resumeFilters';
+import type { SortOrder } from '~/utils/resumes/resumeFilters';
 import {
   BROWSE_TABS_VALUES,
-  EXPERIENCES,
   getFilterLabel,
   INITIAL_FILTER_STATE,
-  isInitialFilterState,
-  LOCATIONS,
-  ROLES,
   SHORTCUTS,
   SORT_OPTIONS,
 } from '~/utils/resumes/resumeFilters';
@@ -47,7 +42,7 @@ import useDebounceValue from '~/utils/resumes/useDebounceValue';
 import useSearchParams from '~/utils/resumes/useSearchParams';
 import { trpc } from '~/utils/trpc';
 
-import type { FilterState, SortOrder } from '../../utils/resumes/resumeFilters';
+import JobTitlesTypeahead from '../../components/shared/JobTitlesTypeahead';
 
 const STALE_TIME = 5 * 60 * 1000;
 const DEBOUNCE_DELAY = 800;
@@ -56,17 +51,14 @@ const filters: Array<Filter> = [
   {
     id: 'role',
     label: 'Role',
-    options: ROLES,
   },
   {
     id: 'experience',
     label: 'Experience',
-    options: EXPERIENCES,
   },
   {
     id: 'location',
     label: 'Location',
-    options: LOCATIONS,
   },
 ];
 
@@ -81,20 +73,14 @@ const getLoggedOutText = (tabsValue: string) => {
   }
 };
 
-const getEmptyDataText = (
-  tabsValue: string,
-  searchValue: string,
-  userFilters: FilterState,
-) => {
+const getEmptyDataText = (tabsValue: string, searchValue: string) => {
   if (searchValue.length > 0) {
     return 'Try tweaking your search text to see more resumes.';
   }
-  if (!isInitialFilterState(userFilters)) {
-    return 'Try tweaking your filters to see more resumes.';
-  }
+
   switch (tabsValue) {
     case BROWSE_TABS_VALUES.ALL:
-      return "There's nothing to see here...";
+      return 'Oops, there is no resumes to see here. Maybe try tweaking your filters to see more.';
     case BROWSE_TABS_VALUES.STARRED:
       return 'You have not starred any resumes. Star one to see it here!';
     case BROWSE_TABS_VALUES.MY:
@@ -120,7 +106,7 @@ export default function ResumeHomePage() {
     '',
   );
   const [shortcutSelected, setShortcutSelected, isShortcutInit] =
-    useSearchParams('shortcutSelected', 'Unreviewed');
+    useSearchParams('shortcutSelected', 'General');
   const [currentPage, setCurrentPage, isCurrentPageInit] = useSearchParams(
     'currentPage',
     1,
@@ -200,10 +186,11 @@ export default function ResumeHomePage() {
     [
       'resumes.resume.findAll',
       {
-        experienceFilters: userFilters.experience,
+        experienceFilters: userFilters.experience.map(({ value }) => value),
+        isTop10: userFilters.isTop10,
         isUnreviewed: userFilters.isUnreviewed,
-        locationFilters: userFilters.location,
-        roleFilters: userFilters.role,
+        locationFilters: userFilters.location.map(({ value }) => value),
+        roleFilters: userFilters.role.map(({ value }) => value),
         searchValue: useDebounceValue(searchValue, DEBOUNCE_DELAY),
         skip,
         sortOrder,
@@ -219,10 +206,11 @@ export default function ResumeHomePage() {
     [
       'resumes.resume.user.findUserStarred',
       {
-        experienceFilters: userFilters.experience,
+        experienceFilters: userFilters.experience.map(({ value }) => value),
+        isTop10: userFilters.isTop10,
         isUnreviewed: userFilters.isUnreviewed,
-        locationFilters: userFilters.location,
-        roleFilters: userFilters.role,
+        locationFilters: userFilters.location.map(({ value }) => value),
+        roleFilters: userFilters.role.map(({ value }) => value),
         searchValue: useDebounceValue(searchValue, DEBOUNCE_DELAY),
         skip,
         sortOrder,
@@ -239,10 +227,11 @@ export default function ResumeHomePage() {
     [
       'resumes.resume.user.findUserCreated',
       {
-        experienceFilters: userFilters.experience,
+        experienceFilters: userFilters.experience.map(({ value }) => value),
+        isTop10: userFilters.isTop10,
         isUnreviewed: userFilters.isUnreviewed,
-        locationFilters: userFilters.location,
-        roleFilters: userFilters.role,
+        locationFilters: userFilters.location.map(({ value }) => value),
+        roleFilters: userFilters.role.map(({ value }) => value),
         searchValue: useDebounceValue(searchValue, DEBOUNCE_DELAY),
         skip,
         sortOrder,
@@ -262,31 +251,6 @@ export default function ResumeHomePage() {
     } else {
       router.push('/resumes/submit');
     }
-  };
-
-  const onFilterCheckboxChange = (
-    isChecked: boolean,
-    filterSection: FilterId,
-    filterValue: string,
-  ) => {
-    if (isChecked) {
-      setUserFilters({
-        ...userFilters,
-        [filterSection]: [...userFilters[filterSection], filterValue],
-      });
-    } else {
-      setUserFilters({
-        ...userFilters,
-        [filterSection]: userFilters[filterSection].filter(
-          (value) => value !== filterValue,
-        ),
-      });
-    }
-    gaEvent({
-      action: 'resumes.filter_checkbox_click',
-      category: 'engagement',
-      label: 'Select Filter',
-    });
   };
 
   const onClearFilterClick = (filterSection: FilterId) => {
@@ -354,12 +318,74 @@ export default function ResumeHomePage() {
     return getTabQueryData()?.filterCounts;
   };
 
-  const getFilterCount = (filter: FilterLabel, value: string) => {
+  const getFilterTypeahead = (filterId: FilterId) => {
+    const onSelect = (option: TypeaheadOption | null) => {
+      if (option === null) {
+        return;
+      }
+      setUserFilters({
+        ...userFilters,
+        [filterId]: [...userFilters[filterId], option],
+      });
+      gaEvent({
+        action: 'resumes.filter_typeahead_click',
+        category: 'engagement',
+        label: 'Select Filter',
+      });
+    };
+
+    switch (filterId) {
+      case 'experience':
+        return (
+          <ResumeExperienceTypeahead
+            isLabelHidden={true}
+            placeholder="Select experiences"
+            selectedValues={
+              new Set(userFilters[filterId].map(({ value }) => value))
+            }
+            onSelect={onSelect}
+          />
+        );
+      case 'location':
+        return (
+          <CountriesTypeahead
+            excludedValues={
+              new Set(userFilters[filterId].map(({ value }) => value))
+            }
+            isLabelHidden={true}
+            label="Location"
+            placeholder="Select countries"
+            onSelect={onSelect}
+          />
+        );
+      case 'role':
+        return (
+          <JobTitlesTypeahead
+            excludedValues={
+              new Set(userFilters[filterId].map(({ value }) => value))
+            }
+            isLabelHidden={true}
+            label="Role"
+            noResultsMessage="No available roles."
+            placeholder="Select roles"
+            onSelect={onSelect}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  const getFilterCount = (filterId: FilterId, value: string) => {
     const filterCountsData = getTabFilterCounts();
-    if (!filterCountsData) {
+    if (
+      filterCountsData === undefined ||
+      filterCountsData[filterId] === undefined ||
+      filterCountsData[filterId][value] === undefined
+    ) {
       return 0;
     }
-    return filterCountsData[filter][value];
+    return filterCountsData[filterId][value];
   };
 
   return (
@@ -395,7 +421,7 @@ export default function ResumeHomePage() {
                 leave="transition ease-in-out duration-300 transform"
                 leaveFrom="translate-x-0"
                 leaveTo="translate-x-full">
-                <Dialog.Panel className="relative ml-auto flex h-full w-full max-w-xs flex-col overflow-y-scroll bg-white py-4 pb-12 shadow-xl">
+                <Dialog.Panel className="relative ml-auto flex h-full w-full max-w-xs flex-col overflow-y-auto bg-white py-4 pb-12 shadow-xl">
                   <div className="flex items-center justify-between px-4">
                     <h2 className="text-lg font-medium text-slate-900">
                       Quick access
@@ -461,29 +487,28 @@ export default function ResumeHomePage() {
                             </h3>
                             <Disclosure.Panel className="space-y-4 pt-6">
                               <div className="space-y-3">
-                                {filter.options.map((option) => (
+                                {getFilterTypeahead(filter.id)}
+                                {userFilters[filter.id].map((option) => (
                                   <div
                                     key={option.value}
-                                    className="[&>div>div:nth-child(1)>input]:text-primary-600 [&>div>div:nth-child(1)>input]:ring-primary-500 flex items-center px-1 text-sm [&>div>div:nth-child(2)>label]:font-normal">
+                                    className="flex items-center px-1 text-sm">
                                     <CheckboxInput
                                       label={option.label}
-                                      value={userFilters[filter.id].includes(
-                                        option.value,
-                                      )}
-                                      onChange={(isChecked) =>
-                                        onFilterCheckboxChange(
-                                          isChecked,
-                                          filter.id,
-                                          option.value,
-                                        )
+                                      value={true}
+                                      onChange={() =>
+                                        setUserFilters({
+                                          ...userFilters,
+                                          [filter.id]: userFilters[
+                                            filter.id
+                                          ].filter(
+                                            ({ value }) =>
+                                              value !== option.value,
+                                          ),
+                                        })
                                       }
                                     />
                                     <span className="ml-1 text-slate-500">
-                                      (
-                                      {getFilterCount(
-                                        filter.label,
-                                        option.label,
-                                      )}
+                                      ({getFilterCount(filter.id, option.value)}
                                       )
                                     </span>
                                   </div>
@@ -570,32 +595,32 @@ export default function ResumeHomePage() {
                             </Disclosure.Button>
                           </h3>
                           <Disclosure.Panel className="space-y-4 pt-4">
+                            {getFilterTypeahead(filter.id)}
                             <CheckboxList
                               description=""
                               isLabelHidden={true}
                               label=""
                               orientation="vertical">
-                              {filter.options.map((option) => (
+                              {userFilters[filter.id].map((option) => (
                                 <div
                                   key={option.value}
-                                  className="[&>div>div:nth-child(1)>input]:text-primary-600 [&>div>div:nth-child(1)>input]:ring-primary-500 flex items-center px-1 text-sm [&>div>div:nth-child(2)>label]:font-normal">
+                                  className="flex items-center px-1 text-sm">
                                   <CheckboxInput
                                     label={option.label}
-                                    value={userFilters[filter.id].includes(
-                                      option.value,
-                                    )}
-                                    onChange={(isChecked) =>
-                                      onFilterCheckboxChange(
-                                        isChecked,
-                                        filter.id,
-                                        option.value,
-                                      )
+                                    value={true}
+                                    onChange={() =>
+                                      setUserFilters({
+                                        ...userFilters,
+                                        [filter.id]: userFilters[
+                                          filter.id
+                                        ].filter(
+                                          ({ value }) => value !== option.value,
+                                        ),
+                                      })
                                     }
                                   />
                                   <span className="ml-1 text-slate-500">
-                                    (
-                                    {getFilterCount(filter.label, option.label)}
-                                    )
+                                    ({getFilterCount(filter.id, option.value)})
                                   </span>
                                 </div>
                               ))}
@@ -614,7 +639,7 @@ export default function ResumeHomePage() {
             </div>
           </div>
           <div className="relative lg:left-64 lg:w-[calc(100%-16rem)]">
-            <div className="lg:border-grey-200 sticky top-0 z-10 flex flex-wrap items-center justify-between pt-6 pb-2 lg:border-b">
+            <div className="lg:border-grey-200 z-1 sticky top-16 flex flex-wrap items-center justify-between bg-slate-50 pt-6 pb-2 lg:border-b">
               <div className="border-grey-200 mb-4 flex w-full justify-between border-b pb-2 lg:mb-0 lg:w-auto lg:border-none xl:pb-0">
                 <div>
                   <Tabs
@@ -660,7 +685,7 @@ export default function ResumeHomePage() {
                 </div>
                 <DropdownMenu
                   align="end"
-                  label={getFilterLabel(SORT_OPTIONS, sortOrder)}>
+                  label={getFilterLabel('sort', sortOrder)}>
                   {SORT_OPTIONS.map(({ label, value }) => (
                     <DropdownMenu.Item
                       key={value}
@@ -702,16 +727,16 @@ export default function ResumeHomePage() {
                   height={196}
                   width={196}
                 />
-                {getEmptyDataText(tabsValue, searchValue, userFilters)}
+                {getEmptyDataText(tabsValue, searchValue)}
               </div>
             ) : (
-              <div className="h-[calc(100vh-9rem)] pb-10 lg:h-[calc(100vh-6rem)]">
+              <div>
                 <div className="h-[85%] overflow-y-auto">
                   <div>
                     <ResumeListItems resumes={getTabResumes()} />
                   </div>
                 </div>
-                <div className="flex h-[15%] items-center justify-center">
+                <div className="flex h-[15%] items-center justify-center p-4">
                   {getTabTotalPages() > 1 && (
                     <div>
                       <Pagination

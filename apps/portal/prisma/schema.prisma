@@ -62,6 +62,7 @@ model User {
   OffersProfile                 OffersProfile[]
   offersDiscussion              OffersReply[]
   questionsLists                QuestionsList[]
+  OffersAdmin                   OffersAdmin?
 }
 
 enum Vote {
@@ -98,6 +99,9 @@ model Company {
   slug        String   @unique
   description String?  @db.Text
   logoUrl     String?
+  website     String?
+  // The higher the value of the ranking, the higher it appears in the search results.
+  ranking     Int?     @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -110,8 +114,11 @@ model Country {
   id                          String                       @id
   name                        String                       @unique
   code                        String                       @unique
+  // The higher the value of the ranking, the higher it appears in the search results.
+  ranking                     Int?                         @default(0)
   states                      State[]
   questionsQuestionEncounters QuestionsQuestionEncounter[]
+  ResumesResume               ResumesResume[]
 }
 
 model State {
@@ -129,8 +136,12 @@ model City {
   id                          String                       @id
   name                        String
   stateId                     String
+  // The higher the value of the ranking, the higher it appears in the search results.
+  ranking                     Int?                         @default(0)
   state                       State                        @relation(fields: [stateId], references: [id])
   questionsQuestionEncounters QuestionsQuestionEncounter[]
+  OffersExperience            OffersExperience[]
+  OffersOffer                 OffersOffer[]
 
   @@unique([name, stateId])
 }
@@ -143,16 +154,16 @@ model ResumesResume {
   id             String           @id @default(cuid())
   userId         String
   title          String           @db.Text
-  // TODO: Update role, experience, location to use Enums
   role           String           @db.Text
   experience     String           @db.Text
-  location       String           @db.Text
+  locationId     String
   url            String
   additionalInfo String?          @db.Text
   isResolved     Boolean          @default(false)
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location       Country          @relation(fields: [locationId], references: [id], onDelete: Cascade)
   stars          ResumesStar[]
   comments       ResumesComment[]
 }
@@ -180,7 +191,7 @@ model ResumesComment {
   resume      ResumesResume        @relation(fields: [resumeId], references: [id], onDelete: Cascade)
   votes       ResumesCommentVote[]
   user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent      ResumesComment?      @relation("parentComment", fields: [parentId], references: [id])
+  parent      ResumesComment?      @relation("parentComment", fields: [parentId], references: [id], onDelete: Cascade)
   children    ResumesComment[]     @relation("parentComment")
 }
 
@@ -230,10 +241,16 @@ model OffersProfile {
   analysis OffersAnalysis?
 }
 
+model OffersAdmin {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 model OffersBackground {
   id String @id @default(cuid())
 
-  totalYoe     Int
+  totalYoe     Int                 @default(0)
   specificYoes OffersSpecificYoe[]
 
   experiences OffersExperience[]
@@ -265,7 +282,8 @@ model OffersExperience {
 
   // Add more fields
   durationInMonths Int?
-  location         String?
+  location         City?   @relation(fields: [cityId], references: [id])
+  cityId           String?
 
   // FULLTIME fields
   level               String?
@@ -348,8 +366,9 @@ model OffersOffer {
   company   Company @relation(fields: [companyId], references: [id])
   companyId String
 
+  location            City     @relation(fields: [cityId], references: [id])
+  cityId              String
   monthYearReceived   DateTime
-  location            String
   negotiationStrategy String
   comments            String
 
@@ -363,6 +382,7 @@ model OffersOffer {
 
   offersAnalysis     OffersAnalysis?      @relation("HighestOverallOffer")
   offersAnalysisUnit OffersAnalysisUnit[]
+  OffersAnalysisUnit OffersAnalysisUnit[] @relation("Analysed Offer")
 }
 
 model OffersIntern {
@@ -405,7 +425,7 @@ model OffersAnalysis {
   offerId             String      @unique
 
   // OVERALL
-  overallAnalysis       OffersAnalysisUnit @relation("OverallAnalysis", fields: [overallAnalysisUnitId], references: [id])
+  overallAnalysis       OffersAnalysisUnit @relation("OverallAnalysis", fields: [overallAnalysisUnitId], references: [id], onDelete: Cascade)
   overallAnalysisUnitId String
 
   companyAnalysis OffersAnalysisUnit[] @relation("CompanyAnalysis")
@@ -414,7 +434,9 @@ model OffersAnalysis {
 model OffersAnalysisUnit {
   id String @id @default(cuid())
 
-  companyName       String
+  analysedOffer   OffersOffer @relation("Analysed Offer", fields: [analysedOfferId], references: [id], onDelete: Cascade)
+  analysedOfferId String
+
   percentile        Float
   noOfSimilarOffers Int
   topSimilarOffers  OffersOffer[]

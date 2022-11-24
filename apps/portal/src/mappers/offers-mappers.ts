@@ -1,5 +1,7 @@
 import type {
+  City,
   Company,
+  Country,
   OffersAnalysis,
   OffersAnalysisUnit,
   OffersBackground,
@@ -12,6 +14,7 @@ import type {
   OffersProfile,
   OffersReply,
   OffersSpecificYoe,
+  State,
   User,
 } from '@prisma/client';
 import { JobType } from '@prisma/client';
@@ -19,6 +22,7 @@ import { TRPCError } from '@trpc/server';
 
 import type {
   AddToProfileResponse,
+  AdminDashboardOffer,
   AnalysisHighestOffer,
   AnalysisOffer,
   AnalysisUnit,
@@ -27,7 +31,9 @@ import type {
   DashboardOffer,
   Education,
   Experience,
+  GetAdminOffersResponse,
   GetOffersResponse,
+  Location,
   OffersCompany,
   Paging,
   Profile,
@@ -42,6 +48,7 @@ import type {
 const analysisOfferDtoMapper = (
   offer: OffersOffer & {
     company: Company;
+    location: City & { state: State & { country: Country } };
     offersFullTime:
       | (OffersFullTime & { totalCompensation: OffersCurrency })
       | null;
@@ -49,7 +56,14 @@ const analysisOfferDtoMapper = (
     profile: OffersProfile & {
       background:
         | (OffersBackground & {
-            experiences: Array<OffersExperience & { company: Company | null }>;
+            experiences: Array<
+              OffersExperience & {
+                company: Company | null;
+                location:
+                  | (City & { state: State & { country: Country } })
+                  | null;
+              }
+            >;
           })
         | null;
     };
@@ -68,13 +82,14 @@ const analysisOfferDtoMapper = (
     },
     jobType: offer.jobType,
     level: offer.offersFullTime?.level ?? '',
-    location: offer.location,
+    location: locationDtoMapper(offer.location),
     monthYearReceived: offer.monthYearReceived,
     negotiationStrategy: offer.negotiationStrategy,
     previousCompanies:
       background?.experiences
         ?.filter((exp) => exp.company != null)
         .map((exp) => exp.company?.name ?? '') ?? [],
+    profileId: offer.profileId,
     profileName,
     title:
       offer.jobType === JobType.FULLTIME
@@ -83,7 +98,10 @@ const analysisOfferDtoMapper = (
     totalYoe: background?.totalYoe ?? -1,
   };
 
-  if (offer.offersFullTime?.totalCompensation) {
+  if (
+    offer.offersFullTime?.totalCompensation &&
+    offer.jobType === JobType.FULLTIME
+  ) {
     analysisOfferDto.income.value =
       offer.offersFullTime.totalCompensation.value;
     analysisOfferDto.income.currency =
@@ -93,7 +111,10 @@ const analysisOfferDtoMapper = (
       offer.offersFullTime.totalCompensation.baseValue;
     analysisOfferDto.income.baseCurrency =
       offer.offersFullTime.totalCompensation.baseCurrency;
-  } else if (offer.offersIntern?.monthlySalary) {
+  } else if (
+    offer.offersIntern?.monthlySalary &&
+    offer.jobType === JobType.INTERN
+  ) {
     analysisOfferDto.income.value = offer.offersIntern.monthlySalary.value;
     analysisOfferDto.income.currency =
       offer.offersIntern.monthlySalary.currency;
@@ -114,9 +135,18 @@ const analysisOfferDtoMapper = (
 
 const analysisUnitDtoMapper = (
   analysisUnit: OffersAnalysisUnit & {
+    analysedOffer: OffersOffer & {
+      company: Company;
+      offersFullTime:
+        | (OffersFullTime & { totalCompensation: OffersCurrency })
+        | null;
+      offersIntern: (OffersIntern & { monthlySalary: OffersCurrency }) | null;
+      profile: OffersProfile & { background: OffersBackground | null };
+    };
     topSimilarOffers: Array<
       OffersOffer & {
         company: Company;
+        location: City & { state: State & { country: Country } };
         offersFullTime:
           | (OffersFullTime & { totalCompensation: OffersCurrency })
           | null;
@@ -125,7 +155,12 @@ const analysisUnitDtoMapper = (
           background:
             | (OffersBackground & {
                 experiences: Array<
-                  OffersExperience & { company: Company | null }
+                  OffersExperience & {
+                    company: Company | null;
+                    location:
+                      | (City & { state: State & { country: Country } })
+                      | null;
+                  }
                 >;
               })
             | null;
@@ -134,20 +169,57 @@ const analysisUnitDtoMapper = (
     >;
   },
 ) => {
-  const analysisDto: AnalysisUnit = {
-    companyName: analysisUnit.companyName,
+  const { analysedOffer } = analysisUnit;
+  const { jobType } = analysedOffer;
+
+  const analysisUnitDto: AnalysisUnit = {
+    companyId: analysedOffer.companyId,
+    companyName: analysedOffer.company.name,
+    income: valuationDtoMapper({
+      baseCurrency: '',
+      baseValue: -1,
+      currency: '',
+      id: '',
+      value: -1,
+    }),
+    jobType,
     noOfOffers: analysisUnit.noOfSimilarOffers,
     percentile: analysisUnit.percentile,
+    title:
+      jobType === JobType.FULLTIME && analysedOffer.offersFullTime != null
+        ? analysedOffer.offersFullTime.title
+        : jobType === JobType.INTERN && analysedOffer.offersIntern != null
+        ? analysedOffer.offersIntern.title
+        : '',
     topPercentileOffers: analysisUnit.topSimilarOffers.map((offer) =>
       analysisOfferDtoMapper(offer),
     ),
+    totalYoe: analysisUnit.analysedOffer.profile.background?.totalYoe ?? 0,
   };
-  return analysisDto;
+
+  if (
+    analysedOffer.offersFullTime &&
+    analysedOffer.jobType === JobType.FULLTIME
+  ) {
+    analysisUnitDto.income = valuationDtoMapper(
+      analysedOffer.offersFullTime.totalCompensation,
+    );
+  } else if (
+    analysedOffer.offersIntern &&
+    analysedOffer.jobType === JobType.INTERN
+  ) {
+    analysisUnitDto.income = valuationDtoMapper(
+      analysedOffer.offersIntern.monthlySalary,
+    );
+  }
+
+  return analysisUnitDto;
 };
 
 const analysisHighestOfferDtoMapper = (
   offer: OffersOffer & {
     company: Company;
+    location: City & { state: State & { country: Country } };
     offersFullTime:
       | (OffersFullTime & { totalCompensation: OffersCurrency })
       | null;
@@ -159,7 +231,7 @@ const analysisHighestOfferDtoMapper = (
     company: offersCompanyDtoMapper(offer.company),
     id: offer.id,
     level: offer.offersFullTime?.level ?? '',
-    location: offer.location,
+    location: locationDtoMapper(offer.location),
     totalYoe: offer.profile.background?.totalYoe ?? -1,
   };
   return analysisHighestOfferDto;
@@ -170,9 +242,20 @@ export const profileAnalysisDtoMapper = (
     | (OffersAnalysis & {
         companyAnalysis: Array<
           OffersAnalysisUnit & {
+            analysedOffer: OffersOffer & {
+              company: Company;
+              offersFullTime:
+                | (OffersFullTime & { totalCompensation: OffersCurrency })
+                | null;
+              offersIntern:
+                | (OffersIntern & { monthlySalary: OffersCurrency })
+                | null;
+              profile: OffersProfile & { background: OffersBackground | null };
+            };
             topSimilarOffers: Array<
               OffersOffer & {
                 company: Company;
+                location: City & { state: State & { country: Country } };
                 offersFullTime:
                   | (OffersFullTime & { totalCompensation: OffersCurrency })
                   | null;
@@ -183,7 +266,12 @@ export const profileAnalysisDtoMapper = (
                   background:
                     | (OffersBackground & {
                         experiences: Array<
-                          OffersExperience & { company: Company | null }
+                          OffersExperience & {
+                            company: Company | null;
+                            location:
+                              | (City & { state: State & { country: Country } })
+                              | null;
+                          }
                         >;
                       })
                     | null;
@@ -193,9 +281,20 @@ export const profileAnalysisDtoMapper = (
           }
         >;
         overallAnalysis: OffersAnalysisUnit & {
+          analysedOffer: OffersOffer & {
+            company: Company;
+            offersFullTime:
+              | (OffersFullTime & { totalCompensation: OffersCurrency })
+              | null;
+            offersIntern:
+              | (OffersIntern & { monthlySalary: OffersCurrency })
+              | null;
+            profile: OffersProfile & { background: OffersBackground | null };
+          };
           topSimilarOffers: Array<
             OffersOffer & {
               company: Company;
+              location: City & { state: State & { country: Country } };
               offersFullTime:
                 | (OffersFullTime & { totalCompensation: OffersCurrency })
                 | null;
@@ -206,7 +305,12 @@ export const profileAnalysisDtoMapper = (
                 background:
                   | (OffersBackground & {
                       experiences: Array<
-                        OffersExperience & { company: Company | null }
+                        OffersExperience & {
+                          company: Company | null;
+                          location:
+                            | (City & { state: State & { country: Country } })
+                            | null;
+                        }
                       >;
                     })
                   | null;
@@ -216,6 +320,7 @@ export const profileAnalysisDtoMapper = (
         };
         overallHighestOffer: OffersOffer & {
           company: Company;
+          location: City & { state: State & { country: Country } };
           offersFullTime:
             | (OffersFullTime & { totalCompensation: OffersCurrency })
             | null;
@@ -227,7 +332,7 @@ export const profileAnalysisDtoMapper = (
       })
     | null,
 ) => {
-  if (!analysis) {
+  if (analysis == null) {
     return null;
   }
 
@@ -245,6 +350,23 @@ export const profileAnalysisDtoMapper = (
     updatedAt: analysis.updatedAt,
   };
   return profileAnalysisDto;
+};
+
+export const locationDtoMapper = (
+  city: City & { state: State & { country: Country } },
+) => {
+  const { state } = city;
+  const { country } = state;
+  const locationDto: Location = {
+    cityId: city.id,
+    cityName: city.name,
+    countryCode: country.code,
+    countryId: country.id,
+    countryName: country.name,
+    stateId: state.id,
+    stateName: state.name,
+  };
+  return locationDto;
 };
 
 export const valuationDtoMapper = (currency: {
@@ -300,6 +422,7 @@ export const educationDtoMapper = (education: {
 export const experienceDtoMapper = (
   experience: OffersExperience & {
     company: Company | null;
+    location: (City & { state: State & { country: Country } }) | null;
     monthlySalary: OffersCurrency | null;
     totalCompensation: OffersCurrency | null;
   },
@@ -312,14 +435,19 @@ export const experienceDtoMapper = (
     id: experience.id,
     jobType: experience.jobType,
     level: experience.level,
-    location: experience.location,
-    monthlySalary: experience.monthlySalary
-      ? valuationDtoMapper(experience.monthlySalary)
-      : null,
+    location:
+      experience.location != null
+        ? locationDtoMapper(experience.location)
+        : null,
+    monthlySalary:
+      experience.monthlySalary && experience.jobType === JobType.INTERN
+        ? valuationDtoMapper(experience.monthlySalary)
+        : null,
     title: experience.title,
-    totalCompensation: experience.totalCompensation
-      ? valuationDtoMapper(experience.totalCompensation)
-      : null,
+    totalCompensation:
+      experience.totalCompensation && experience.jobType === JobType.FULLTIME
+        ? valuationDtoMapper(experience.totalCompensation)
+        : null,
   };
   return experienceDto;
 };
@@ -345,6 +473,7 @@ export const backgroundDtoMapper = (
         experiences: Array<
           OffersExperience & {
             company: Company | null;
+            location: (City & { state: State & { country: Country } }) | null;
             monthlySalary: OffersCurrency | null;
             totalCompensation: OffersCurrency | null;
           }
@@ -383,6 +512,7 @@ export const backgroundDtoMapper = (
 export const profileOfferDtoMapper = (
   offer: OffersOffer & {
     company: Company;
+    location: City & { state: State & { country: Country } };
     offersFullTime:
       | (OffersFullTime & {
           baseSalary: OffersCurrency | null;
@@ -399,14 +529,14 @@ export const profileOfferDtoMapper = (
     company: offersCompanyDtoMapper(offer.company),
     id: offer.id,
     jobType: offer.jobType,
-    location: offer.location,
+    location: locationDtoMapper(offer.location),
     monthYearReceived: offer.monthYearReceived,
     negotiationStrategy: offer.negotiationStrategy,
-    offersFullTime: offer.offersFullTime,
-    offersIntern: offer.offersIntern,
+    offersFullTime: null,
+    offersIntern: null,
   };
 
-  if (offer.offersFullTime) {
+  if (offer.offersFullTime && offer.jobType === JobType.FULLTIME) {
     profileOfferDto.offersFullTime = {
       baseSalary:
         offer.offersFullTime?.baseSalary != null
@@ -427,7 +557,7 @@ export const profileOfferDtoMapper = (
         offer.offersFullTime.totalCompensation,
       ),
     };
-  } else if (offer.offersIntern) {
+  } else if (offer.offersIntern && offer.jobType === JobType.INTERN) {
     profileOfferDto.offersIntern = {
       id: offer.offersIntern.id,
       internshipCycle: offer.offersIntern.internshipCycle,
@@ -446,9 +576,22 @@ export const profileDtoMapper = (
       | (OffersAnalysis & {
           companyAnalysis: Array<
             OffersAnalysisUnit & {
+              analysedOffer: OffersOffer & {
+                company: Company;
+                offersFullTime:
+                  | (OffersFullTime & { totalCompensation: OffersCurrency })
+                  | null;
+                offersIntern:
+                  | (OffersIntern & { monthlySalary: OffersCurrency })
+                  | null;
+                profile: OffersProfile & {
+                  background: OffersBackground | null;
+                };
+              };
               topSimilarOffers: Array<
                 OffersOffer & {
                   company: Company;
+                  location: City & { state: State & { country: Country } };
                   offersFullTime:
                     | (OffersFullTime & { totalCompensation: OffersCurrency })
                     | null;
@@ -459,7 +602,14 @@ export const profileDtoMapper = (
                     background:
                       | (OffersBackground & {
                           experiences: Array<
-                            OffersExperience & { company: Company | null }
+                            OffersExperience & {
+                              company: Company | null;
+                              location:
+                                | (City & {
+                                    state: State & { country: Country };
+                                  })
+                                | null;
+                            }
                           >;
                         })
                       | null;
@@ -469,9 +619,20 @@ export const profileDtoMapper = (
             }
           >;
           overallAnalysis: OffersAnalysisUnit & {
+            analysedOffer: OffersOffer & {
+              company: Company;
+              offersFullTime:
+                | (OffersFullTime & { totalCompensation: OffersCurrency })
+                | null;
+              offersIntern:
+                | (OffersIntern & { monthlySalary: OffersCurrency })
+                | null;
+              profile: OffersProfile & { background: OffersBackground | null };
+            };
             topSimilarOffers: Array<
               OffersOffer & {
                 company: Company;
+                location: City & { state: State & { country: Country } };
                 offersFullTime:
                   | (OffersFullTime & { totalCompensation: OffersCurrency })
                   | null;
@@ -482,7 +643,12 @@ export const profileDtoMapper = (
                   background:
                     | (OffersBackground & {
                         experiences: Array<
-                          OffersExperience & { company: Company | null }
+                          OffersExperience & {
+                            company: Company | null;
+                            location:
+                              | (City & { state: State & { country: Country } })
+                              | null;
+                          }
                         >;
                       })
                     | null;
@@ -492,6 +658,7 @@ export const profileDtoMapper = (
           };
           overallHighestOffer: OffersOffer & {
             company: Company;
+            location: City & { state: State & { country: Country } };
             offersFullTime:
               | (OffersFullTime & { totalCompensation: OffersCurrency })
               | null;
@@ -508,6 +675,7 @@ export const profileDtoMapper = (
           experiences: Array<
             OffersExperience & {
               company: Company | null;
+              location: (City & { state: State & { country: Country } }) | null;
               monthlySalary: OffersCurrency | null;
               totalCompensation: OffersCurrency | null;
             }
@@ -525,6 +693,7 @@ export const profileDtoMapper = (
     offers: Array<
       OffersOffer & {
         company: Company;
+        location: City & { state: State & { country: Country } };
         offersFullTime:
           | (OffersFullTime & {
               baseSalary: OffersCurrency | null;
@@ -596,6 +765,7 @@ export const addToProfileResponseMapper = (updatedProfile: {
 export const dashboardOfferDtoMapper = (
   offer: OffersOffer & {
     company: Company;
+    location: City & { state: State & { country: Country } };
     offersFullTime:
       | (OffersFullTime & {
           baseSalary: OffersCurrency | null;
@@ -605,7 +775,10 @@ export const dashboardOfferDtoMapper = (
         })
       | null;
     offersIntern: (OffersIntern & { monthlySalary: OffersCurrency }) | null;
-    profile: OffersProfile & { background: OffersBackground | null };
+    profile: OffersProfile & {
+      background: OffersBackground | null;
+      offers: Array<OffersOffer>;
+    };
   },
 ) => {
   const dashboardOfferDto: DashboardOffer = {
@@ -618,17 +791,36 @@ export const dashboardOfferDtoMapper = (
       id: '',
       value: -1,
     }),
+    location: locationDtoMapper(offer.location),
     monthYearReceived: offer.monthYearReceived,
+    numberOfOtherOffers:
+      offer.profile.offers.length < 2 ? 0 : offer.profile.offers.length - 1,
     profileId: offer.profileId,
     title: offer.offersFullTime?.title || offer.offersIntern?.title || '',
     totalYoe: offer.profile.background?.totalYoe ?? -1,
   };
 
-  if (offer.offersFullTime) {
+  if (offer.offersFullTime && offer.jobType === JobType.FULLTIME) {
     dashboardOfferDto.income = valuationDtoMapper(
       offer.offersFullTime.totalCompensation,
     );
-  } else if (offer.offersIntern) {
+
+    if (offer.offersFullTime.baseSalary) {
+      dashboardOfferDto.baseSalary = valuationDtoMapper(
+        offer.offersFullTime.baseSalary,
+      );
+    }
+
+    if (offer.offersFullTime.bonus) {
+      dashboardOfferDto.bonus = valuationDtoMapper(offer.offersFullTime.bonus);
+    }
+
+    if (offer.offersFullTime.stocks) {
+      dashboardOfferDto.stocks = valuationDtoMapper(
+        offer.offersFullTime.stocks,
+      );
+    }
+  } else if (offer.offersIntern && offer.jobType === JobType.INTERN) {
     dashboardOfferDto.income = valuationDtoMapper(
       offer.offersIntern.monthlySalary,
     );
@@ -640,9 +832,11 @@ export const dashboardOfferDtoMapper = (
 export const getOffersResponseMapper = (
   data: Array<DashboardOffer>,
   paging: Paging,
+  jobType: JobType,
 ) => {
   const getOffersResponse: GetOffersResponse = {
     data,
+    jobType,
     paging,
   };
   return getOffersResponse;
@@ -656,6 +850,7 @@ export const getUserProfileResponseMapper = (
             offers: Array<
               OffersOffer & {
                 company: Company;
+                location: City & { state: State & { country: Country } };
                 offersFullTime:
                   | (OffersFullTime & { totalCompensation: OffersCurrency })
                   | null;
@@ -691,6 +886,7 @@ export const getUserProfileResponseMapper = (
 const userProfileOfferDtoMapper = (
   offer: OffersOffer & {
     company: Company;
+    location: City & { state: State & { country: Country } };
     offersFullTime:
       | (OffersFullTime & { totalCompensation: OffersCurrency })
       | null;
@@ -709,7 +905,7 @@ const userProfileOfferDtoMapper = (
     },
     jobType: offer.jobType,
     level: offer.offersFullTime?.level ?? '',
-    location: offer.location,
+    location: locationDtoMapper(offer.location),
     monthYearReceived: offer.monthYearReceived,
     title:
       offer.jobType === JobType.FULLTIME
@@ -717,7 +913,10 @@ const userProfileOfferDtoMapper = (
         : offer.offersIntern?.title ?? '',
   };
 
-  if (offer.offersFullTime?.totalCompensation) {
+  if (
+    offer.offersFullTime?.totalCompensation &&
+    offer.jobType === JobType.FULLTIME
+  ) {
     mappedOffer.income.value = offer.offersFullTime.totalCompensation.value;
     mappedOffer.income.currency =
       offer.offersFullTime.totalCompensation.currency;
@@ -726,7 +925,10 @@ const userProfileOfferDtoMapper = (
       offer.offersFullTime.totalCompensation.baseValue;
     mappedOffer.income.baseCurrency =
       offer.offersFullTime.totalCompensation.baseCurrency;
-  } else if (offer.offersIntern?.monthlySalary) {
+  } else if (
+    offer.offersIntern?.monthlySalary &&
+    offer.jobType === JobType.INTERN
+  ) {
     mappedOffer.income.value = offer.offersIntern.monthlySalary.value;
     mappedOffer.income.currency = offer.offersIntern.monthlySalary.currency;
     mappedOffer.income.id = offer.offersIntern.monthlySalary.id;
@@ -741,4 +943,87 @@ const userProfileOfferDtoMapper = (
   }
 
   return mappedOffer;
+};
+
+export const adminDashboardOfferDtoMapper = (
+  offer: OffersOffer & {
+    company: Company;
+    location: City & { state: State & { country: Country } };
+    offersFullTime:
+      | (OffersFullTime & {
+          baseSalary: OffersCurrency | null;
+          bonus: OffersCurrency | null;
+          stocks: OffersCurrency | null;
+          totalCompensation: OffersCurrency;
+        })
+      | null;
+    offersIntern: (OffersIntern & { monthlySalary: OffersCurrency }) | null;
+    profile: OffersProfile & {
+      background: OffersBackground | null;
+      offers: Array<OffersOffer>;
+    };
+  },
+) => {
+  const adminDashboardOfferDto: AdminDashboardOffer = {
+    company: offersCompanyDtoMapper(offer.company),
+    id: offer.id,
+    income: valuationDtoMapper({
+      baseCurrency: '',
+      baseValue: -1,
+      currency: '',
+      id: '',
+      value: -1,
+    }),
+    location: locationDtoMapper(offer.location),
+    monthYearReceived: offer.monthYearReceived,
+    numberOfOtherOffers:
+      offer.profile.offers.length < 2 ? 0 : offer.profile.offers.length - 1,
+    profileId: offer.profileId,
+    title: offer.offersFullTime?.title || offer.offersIntern?.title || '',
+    token: offer.profile.editToken,
+    totalYoe: offer.profile.background?.totalYoe ?? -1,
+  };
+
+  if (offer.offersFullTime && offer.jobType === JobType.FULLTIME) {
+    adminDashboardOfferDto.income = valuationDtoMapper(
+      offer.offersFullTime.totalCompensation,
+    );
+
+    if (offer.offersFullTime.baseSalary) {
+      adminDashboardOfferDto.baseSalary = valuationDtoMapper(
+        offer.offersFullTime.baseSalary,
+      );
+    }
+
+    if (offer.offersFullTime.bonus) {
+      adminDashboardOfferDto.bonus = valuationDtoMapper(
+        offer.offersFullTime.bonus,
+      );
+    }
+
+    if (offer.offersFullTime.stocks) {
+      adminDashboardOfferDto.stocks = valuationDtoMapper(
+        offer.offersFullTime.stocks,
+      );
+    }
+  } else if (offer.offersIntern && offer.jobType === JobType.INTERN) {
+    adminDashboardOfferDto.income = valuationDtoMapper(
+      offer.offersIntern.monthlySalary,
+    );
+  }
+
+  return adminDashboardOfferDto;
+};
+
+export const getAdminOffersResponseMapper = (
+  data: Array<AdminDashboardOffer>,
+  paging: Paging,
+  jobType: JobType,
+) => {
+  const getAdminOffersResponse: GetAdminOffersResponse = {
+    data,
+    jobType,
+    paging,
+  };
+  return getAdminOffersResponse;
 };

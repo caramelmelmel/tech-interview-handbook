@@ -2,14 +2,14 @@ import type { StaticImageData } from 'next/image';
 import Image from 'next/image';
 import type { ReactNode } from 'react';
 
-import { HOME_URL } from '~/components/offers/types';
-
 type LeftTextCardProps = Readonly<{
+  buttonLabel: string;
   description: string;
   icon: ReactNode;
   imageAlt: string;
   imageSrc: StaticImageData;
   title: string;
+  url: string;
 }>;
 
 export default function LeftTextCard({
@@ -18,6 +18,8 @@ export default function LeftTextCard({
   imageAlt,
   imageSrc,
   title,
+  buttonLabel,
+  url,
 }: LeftTextCardProps) {
   return (
     <div className="items-center lg:mx-auto lg:grid lg:max-w-7xl lg:grid-flow-col-dense lg:grid-cols-2 lg:gap-24 lg:px-8">
@@ -36,15 +38,15 @@ export default function LeftTextCard({
             <div className="mt-6">
               <a
                 className="to-primary-500 inline-flex rounded-md border border-transparent bg-gradient-to-r from-purple-600 bg-origin-border px-4 py-2 text-base font-medium text-white shadow-sm hover:from-purple-700 hover:to-indigo-700"
-                href={HOME_URL}>
-                Get started
+                href={url}>
+                {buttonLabel}
               </a>
             </div>
           </div>
         </div>
       </div>
       <div className="mt-12 sm:mt-16 lg:mt-0">
-        <div className="-mr-48 w-full rounded-xl pl-4 shadow-xl ring-1 ring-black ring-opacity-5 sm:pl-6 md:-mr-16 lg:relative lg:m-0 lg:h-full lg:px-0">
+        <div className="-mr-48 w-full rounded-xl shadow-xl ring-1 ring-black ring-opacity-5 md:-mr-16 lg:relative lg:m-0 lg:h-full lg:px-0">
           <Image
             alt={imageAlt}
             className="lg:absolute lg:left-0 lg:h-full lg:w-auto lg:max-w-none"

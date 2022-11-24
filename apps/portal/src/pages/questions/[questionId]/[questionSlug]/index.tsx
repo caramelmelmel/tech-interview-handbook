@@ -2,13 +2,14 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { ArrowSmallLeftIcon } from '@heroicons/react/24/outline';
 import { Button, Collapsible, HorizontalDivider, TextArea } from '@tih/ui';
 
-import AnswerCommentListItem from '~/components/questions/AnswerCommentListItem';
+import { useGoogleAnalytics } from '~/components/global/GoogleAnalytics';
 import FullQuestionCard from '~/components/questions/card/question/FullQuestionCard';
 import QuestionAnswerCard from '~/components/questions/card/QuestionAnswerCard';
+import QuestionCommentListItem from '~/components/questions/comments/QuestionCommentListItem';
 import FullScreenSpinner from '~/components/questions/FullScreenSpinner';
+import BackButtonLayout from '~/components/questions/layout/BackButtonLayout';
 import PaginationLoadMoreButton from '~/components/questions/PaginationLoadMoreButton';
 import SortOptionsSelect from '~/components/questions/SortOptionsSelect';
 
@@ -31,6 +32,7 @@ export type QuestionCommentData = {
 
 export default function QuestionPage() {
   const router = useRouter();
+  const { event } = useGoogleAnalytics();
 
   const [answerSortOrder, setAnswerSortOrder] = useState<SortOrder>(
     SortOrder.DESC,
@@ -108,6 +110,29 @@ export default function QuestionPage() {
         utils.invalidateQueries(
           'questions.questions.comments.getQuestionComments',
         );
+
+        const previousData = utils.getQueryData([
+          'questions.questions.getQuestionById',
+          { id: questionId as string },
+        ]);
+
+        if (previousData === undefined) {
+          return;
+        }
+
+        utils.setQueryData(
+          ['questions.questions.getQuestionById', { id: questionId as string }],
+          {
+            ...previousData,
+            numComments: previousData.numComments + 1,
+          },
+        );
+
+        event({
+          action: 'questions.comment',
+          category: 'engagement',
+          label: 'comment on question',
+        });
       },
     },
   );
@@ -135,11 +160,33 @@ export default function QuestionPage() {
     {
       onSuccess: () => {
         utils.invalidateQueries('questions.answers.getAnswers');
+
+        const previousData = utils.getQueryData([
+          'questions.questions.getQuestionById',
+          { id: questionId as string },
+        ]);
+
+        if (previousData === undefined) {
+          return;
+        }
+
+        utils.setQueryData(
+          ['questions.questions.getQuestionById', { id: questionId as string }],
+          {
+            ...previousData,
+            numAnswers: previousData.numAnswers + 1,
+          },
+        );
+        event({
+          action: 'questions.answer',
+          category: 'engagement',
+          label: 'add answer to question',
+        });
       },
     },
   );
 
-  const { mutate: addEncounter } = trpc.useMutation(
+  const { mutateAsync: addEncounterAsync } = trpc.useMutation(
     'questions.questions.encounters.user.create',
     {
       onSuccess: () => {
@@ -147,6 +194,11 @@ export default function QuestionPage() {
           'questions.questions.encounters.getAggregatedEncounters',
         );
         utils.invalidateQueries('questions.questions.getQuestionById');
+        event({
+          action: 'questions.create_question',
+          category: 'engagement',
+          label: 'create question encounter',
+        });
       },
     },
   );
@@ -182,19 +234,9 @@ export default function QuestionPage() {
           {question.content} - {APP_TITLE}
         </title>
       </Head>
-      <div className="flex w-full flex-1 items-stretch pb-4">
-        <div className="flex items-baseline gap-2 py-4 pl-4">
-          <Button
-            addonPosition="start"
-            display="inline"
-            href="/questions/browse"
-            icon={ArrowSmallLeftIcon}
-            label="Back"
-            variant="secondary"
-          />
-        </div>
-        <div className="flex w-full justify-center overflow-y-auto py-4 px-5">
-          <div className="flex max-w-7xl flex-1 flex-col gap-2">
+      <BackButtonLayout href="/questions/browse">
+        <div className="flex flex-1 flex-col gap-4">
+          <div className="flex flex-col gap-4 rounded-md border bg-white p-4">
             <FullQuestionCard
               {...question}
               companies={relabeledAggregatedEncounters?.companyCounts ?? {}}
@@ -203,13 +245,10 @@ export default function QuestionPage() {
               questionId={question.id}
               receivedCount={undefined}
               roles={relabeledAggregatedEncounters?.roleCounts ?? {}}
-              timestamp={question.seenAt.toLocaleDateString(undefined, {
-                month: 'short',
-                year: 'numeric',
-              })}
+              timestamp={question.lastSeenAt}
               upvoteCount={question.numVotes}
-              onReceivedSubmit={(data) => {
-                addEncounter({
+              onReceivedSubmit={async (data) => {
+                await addEncounterAsync({
                   cityId: data.cityId,
                   companyId: data.company,
                   countryId: data.countryId,
@@ -220,11 +259,43 @@ export default function QuestionPage() {
                 });
               }}
             />
-            <div className="mx-2">
-              <Collapsible label={`${question.numComments} comment(s)`}>
-                <div className="mt-4 px-4">
+            <div className="sm:ml-13 ml-11 mr-2 md:ml-14">
+              <Collapsible
+                label={
+                  <div className="text-primary-700">
+                    {question.numComments}{' '}
+                    {question.numComments === 1 ? 'comment' : 'comments'}
+                  </div>
+                }>
+                <div className="flex flex-col gap-4 text-black">
+                  <div className="flex justify-end gap-2">
+                    <div className="flex items-end gap-2">
+                      <SortOptionsSelect
+                        sortOrderValue={commentSortOrder}
+                        sortTypeValue={commentSortType}
+                        onSortOrderChange={setCommentSortOrder}
+                        onSortTypeChange={setCommentSortType}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-4">
+                    {(commentData?.pages ?? []).flatMap(({ data: comments }) =>
+                      comments.map((comment) => (
+                        <QuestionCommentListItem
+                          key={comment.id}
+                          authorImageUrl={comment.userImage}
+                          authorName={comment.user}
+                          content={comment.content}
+                          createdAt={comment.createdAt}
+                          questionCommentId={comment.id}
+                          upvoteCount={comment.numVotes}
+                        />
+                      )),
+                    )}
+                  </div>
+                  <PaginationLoadMoreButton query={commentInfiniteQuery} />
                   <form
-                    className="mb-2"
+                    className="mt-4"
                     onSubmit={handleCommentSubmitClick(handleSubmitComment)}>
                     <TextArea
                       {...commentRegister('commentContent', {
@@ -236,7 +307,7 @@ export default function QuestionPage() {
                       resize="vertical"
                       rows={2}
                     />
-                    <div className="my-3 flex justify-between">
+                    <div className="my-3 flex justify-end">
                       <Button
                         disabled={!isCommentDirty || !isCommentValid}
                         label="Post"
@@ -245,93 +316,72 @@ export default function QuestionPage() {
                       />
                     </div>
                   </form>
-                  {/* TODO: Add button to load more */}
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-lg">Comments</p>
-                      <div className="flex items-end gap-2">
-                        <SortOptionsSelect
-                          sortOrderValue={commentSortOrder}
-                          sortTypeValue={commentSortType}
-                          onSortOrderChange={setCommentSortOrder}
-                          onSortTypeChange={setCommentSortType}
-                        />
-                      </div>
-                    </div>
-                    {(commentData?.pages ?? []).flatMap(
-                      ({ processedQuestionCommentsData: comments }) =>
-                        comments.map((comment) => (
-                          <AnswerCommentListItem
-                            key={comment.id}
-                            answerCommentId={comment.id}
-                            authorImageUrl={comment.userImage}
-                            authorName={comment.user}
-                            content={comment.content}
-                            createdAt={comment.createdAt}
-                            upvoteCount={comment.numVotes}
-                          />
-                        )),
-                    )}
-                    <PaginationLoadMoreButton query={commentInfiniteQuery} />
-                  </div>
                 </div>
               </Collapsible>
             </div>
-            <HorizontalDivider />
-            <form onSubmit={handleSubmit(handleSubmitAnswer)}>
+          </div>
+          <HorizontalDivider />
+          <form onSubmit={handleSubmit(handleSubmitAnswer)}>
+            <div className="flex flex-col gap-2">
+              <p className="text-md font-semibold">Contribute your answer</p>
               <TextArea
                 {...answerRegister('answerContent', {
                   minLength: 1,
                   required: true,
                 })}
+                isLabelHidden={true}
                 label="Contribute your answer"
                 required={true}
                 resize="vertical"
                 rows={5}
               />
-              <div className="mt-3 mb-1 flex justify-between">
-                <Button
-                  disabled={!isDirty || !isValid}
-                  label="Contribute"
-                  type="submit"
-                  variant="primary"
-                />
-              </div>
-            </form>
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xl">{question.numAnswers} answers</p>
-              <div className="flex items-end gap-2">
-                <SortOptionsSelect
-                  sortOrderValue={answerSortOrder}
-                  sortTypeValue={answerSortType}
-                  onSortOrderChange={setAnswerSortOrder}
-                  onSortTypeChange={setAnswerSortType}
-                />
-              </div>
             </div>
+            <div className="mt-3 mb-1 flex justify-end">
+              <Button
+                disabled={!isDirty || !isValid}
+                label="Contribute"
+                type="submit"
+                variant="primary"
+              />
+            </div>
+          </form>
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-xl font-semibold">
+              {question.numAnswers}{' '}
+              {question.numAnswers === 1 ? 'answer' : 'answers'}
+            </p>
+            <div className="flex items-end gap-4">
+              <SortOptionsSelect
+                sortOrderValue={answerSortOrder}
+                sortTypeValue={answerSortType}
+                onSortOrderChange={setAnswerSortOrder}
+                onSortTypeChange={setAnswerSortType}
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-4">
             {/* TODO: Add button to load more */}
-            {(answerData?.pages ?? []).flatMap(
-              ({ processedAnswersData: answers }) =>
-                answers.map((answer) => (
-                  <QuestionAnswerCard
-                    key={answer.id}
-                    answerId={answer.id}
-                    authorImageUrl={answer.userImage}
-                    authorName={answer.user}
-                    commentCount={answer.numComments}
-                    content={answer.content}
-                    createdAt={answer.createdAt}
-                    href={`${router.asPath}/answer/${answer.id}/${createSlug(
-                      answer.content,
-                    )}`}
-                    upvoteCount={answer.numVotes}
-                  />
-                )),
+            {(answerData?.pages ?? []).flatMap(({ data: answers }) =>
+              answers.map((answer) => (
+                <QuestionAnswerCard
+                  key={answer.id}
+                  answerId={answer.id}
+                  authorImageUrl={answer.userImage}
+                  authorName={answer.user}
+                  commentCount={answer.numComments}
+                  content={answer.content}
+                  createdAt={answer.createdAt}
+                  href={`${router.asPath}/answer/${answer.id}/${createSlug(
+                    answer.content,
+                  )}`}
+                  upvoteCount={answer.numVotes}
+                />
+              )),
             )}
             <PaginationLoadMoreButton query={answerInfiniteQuery} />
           </div>
         </div>
-      </div>
+      </BackButtonLayout>
     </>
   );
 }

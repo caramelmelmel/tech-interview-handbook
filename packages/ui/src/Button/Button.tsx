@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import Link from 'next/link';
+import type { HTMLAttributeAnchorTarget } from 'react';
 import type { UrlObject } from 'url';
 
 import { Spinner } from '../';
@@ -21,6 +22,7 @@ export type ButtonVariant =
 type Props = Readonly<{
   addonPosition?: ButtonAddOnPosition;
   'aria-controls'?: string;
+  'aria-label'?: string;
   className?: string;
   disabled?: boolean;
   display?: ButtonDisplay;
@@ -30,7 +32,9 @@ type Props = Readonly<{
   isLoading?: boolean;
   label: string;
   onClick?: (event: React.MouseEvent<HTMLElement>) => void;
+  rel?: string;
   size?: ButtonSize;
+  target?: HTMLAttributeAnchorTarget;
   type?: ButtonType;
   variant: ButtonVariant;
 }>;
@@ -54,14 +58,14 @@ const baseClasses: Record<ButtonSize, string> = {
 };
 
 const sizeIconSpacingEndClasses: Record<ButtonSize, string> = {
-  lg: 'ml-3 -mr-1 ',
-  md: 'ml-2 -mr-1 ',
+  lg: 'ml-3 -mr-1',
+  md: 'ml-2 -mr-1',
   sm: 'ml-2 -mr-0.5',
 };
 
 const sizeIconSpacingStartClasses: Record<ButtonSize, string> = {
-  lg: 'mr-3 -ml-1 ',
-  md: 'mr-2 -ml-1 ',
+  lg: 'mr-3 -ml-1',
+  md: 'mr-2 -ml-1',
   sm: 'mr-2 -ml-0.5',
 };
 
@@ -103,6 +107,7 @@ const variantDisabledClasses: Record<ButtonVariant, string> = {
 export default function Button({
   addonPosition = 'end',
   'aria-controls': ariaControls,
+  'aria-label': ariaLabel,
   className,
   display = 'inline',
   href,
@@ -115,6 +120,8 @@ export default function Button({
   type = 'button',
   variant,
   onClick,
+  rel,
+  target,
 }: Props) {
   const iconSpacingClass = (() => {
     if (!isLabelHidden && addonPosition === 'start') {
@@ -143,7 +150,7 @@ export default function Button({
 
   const commonProps = {
     'aria-controls': ariaControls ?? undefined,
-    'aria-label': isLabelHidden ? label : undefined,
+    'aria-label': isLabelHidden ? ariaLabel ?? label : undefined,
     children,
     className: clsx(
       display === 'block' ? 'flex w-full justify-center' : 'inline-flex',
@@ -166,6 +173,6 @@ export default function Button({
 
   return (
     // TODO: Allow passing in of Link component.
-    <Link href={href} {...commonProps} />
+    <Link href={href} rel={rel} target={target} {...commonProps} />
   );
 }
